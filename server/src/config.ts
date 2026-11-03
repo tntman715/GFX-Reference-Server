@@ -1,0 +1,238 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import type { Category } from './constants.js';
+
+/** `.env` 파일이 있으면 읽어옵니다 (Node 20.12+ 내장 기능). */
+export function loadDotEnv(file = '.env'): void {
+  const full = path.resolve(file);
+  if (fs.existsSync(full)) process.loadEnvFile(full);
+}
+
+const csv = z
+  .string()
+  .optional()
+  .transform((v) =>
+    (v ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+const bool = (def: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? def : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase())));
+
+const optionalString = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.trim() ? v.trim() : undefined));
+
+const EnvSchema = z.object({
+  NODE_ENV: z.string().default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
+  HOST: z.string().default('0.0.0.0'),
+  /** 사이트/API 가 외부에서 접근되는 주소 (OAuth 리다이렉트, 임베드 링크에 사용) */
+  PUBLIC_BASE_URL: z.string().default('http://localhost:3000'),
+  /** 웹사이트를 다른 도메인에서 호스팅할 때 허용할 Origin 목록 */
+  CORS_ORIGINS: csv,
+  /** 정적 웹사이트 폴더 (기본: ../web) */
+  WEB_DIR: z.string().default('../web'),
+  DATA_DIR: z.string().default('./data'),
+
+  // ── 디스코드 ────────────────────────────────────────────
+  BOT_ENABLED: bool(true),
+  DISCORD_TOKEN: optionalString,
+  DISCORD_CLIENT_ID: optionalString,
+  DISCORD_CLIENT_SECRET: optionalString,
+  /** GFX References 서버(길드) ID */
+  DISCORD_GUILD_ID: optionalString,
+  /** 원본 사진을 보관하는 채널 */
+  ARCHIVE_CHANNEL_ID: optionalString,
+  ARCHIVE_CHANNEL_GM_THUMBNAIL: optionalString,
+  ARCHIVE_CHANNEL_GM_ARTWORK: optionalString,
+  ARCHIVE_CHANNEL_NON_GM: optionalString,
+  /** 주간 인기 썸네일을 올릴 채널 (비우면 자동 게시 안 함) */
+  HIGHLIGHT_CHANNEL_ID: optionalString,
+  /** /업로드 를 사용할 수 있는 채널 (비우면 모든 채널) */
+  UPLOAD_CHANNEL_IDS: csv,
+  /** 관리자 역할 ID 목록 (서버 관리 권한이 있는 사람은 자동으로 관리자) */
+  ADMIN_ROLE_IDS: csv,
+  /** 웹 로그인 시 길드 멤버인지 확인할지 */
+  REQUIRE_GUILD_MEMBERSHIP: bool(true),
+
+  // ── 데이터베이스 ─────────────────────────────────────────
+  /** postgres://... (비우면 DATA_DIR/pglite 에 내장 Postgres 사용) */
+  DATABASE_URL: optionalString,
+  DATABASE_SSL: bool(false),
+
+  // ── 미리보기 저장소 ──────────────────────────────────────
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_ENDPOINT: optionalString,
+  S3_REGION: z.string().default('auto'),
+  S3_BUCKET: optionalString,
+  S3_ACCESS_KEY_ID: optionalString,
+  S3_SECRET_ACCESS_KEY: optionalString,
+  S3_PREFIX: z.string().default(''),
+  /** R2 공개 버킷 / 커스텀 도메인 주소. 비우면 서버가 /api/previews 로 직접 제공 */
+  PREVIEW_PUBLIC_BASE_URL: optionalString,
+
+  /** 원본 보관 방식: discord(기본) 또는 local(디스코드 없이 테스트할 때) */
+  ARCHIVE_DRIVER: z.enum(['discord', 'local']).optional(),
+
+  // ── 업로드 / 이미지 ─────────────────────────────────────
+  MAX_UPLOAD_MB: z.coerce.number().positive().default(25),
+  PREVIEW_MAX_SIZE: z.coerce.number().int().positive().default(720),
+  PREVIEW_QUALITY: z.coerce.number().int().min(30).max(100).default(72),
+  /** dHash 해밍 거리 이하이면 중복으로 의심 (0~64, 0 이면 검사 안 함) */
+  DUPLICATE_THRESHOLD: z.coerce.number().int().min(0).max(64).default(5),
+
+  // ── 점수 / 반응 ─────────────────────────────────────────
+  POINTS_PER_UPLOAD: z.coerce.number().int().default(10),
+  POINTS_PER_REACTION: z.coerce.number().int().default(1),
+  REACTION_EMOJIS: z.string().default('⭐,🔥,💎'),
+  WEEKLY_HIGHLIGHT: bool(true),
+  /** 주간 하이라이트 기준 시간대 */
+  TIMEZONE: z.string().default('Asia/Seoul'),
+
+  // ── 인증 ────────────────────────────────────────────────
+  SESSION_DAYS: z.coerce.number().int().positive().default(30),
+  PLUGIN_TOKEN_DAYS: z.coerce.number().int().positive().default(180),
+});
+
+export interface Config {
+  env: string;
+  isProduction: boolean;
+  port: number;
+  host: string;
+  publicBaseUrl: string;
+  corsOrigins: string[];
+  webDir: string;
+  dataDir: string;
+  discord: {
+    botEnabled: boolean;
+    token?: string;
+    clientId?: string;
+    clientSecret?: string;
+    guildId?: string;
+    archiveChannelId?: string;
+    archiveChannels: Partial<Record<Category, string>>;
+    highlightChannelId?: string;
+    uploadChannelIds: string[];
+    adminRoleIds: string[];
+    requireGuildMembership: boolean;
+    oauthEnabled: boolean;
+  };
+  database: { url?: string; ssl: boolean };
+  storage: {
+    driver: 'local' | 's3';
+    s3?: { endpoint?: string; region: string; bucket: string; accessKeyId: string; secretAccessKey: string; prefix: string };
+    publicBaseUrl?: string;
+  };
+  archiveDriver: 'discord' | 'local';
+  upload: {
+    maxBytes: number;
+    previewMaxSize: number;
+    previewQuality: number;
+    duplicateThreshold: number;
+  };
+  scoring: { pointsPerUpload: number; pointsPerReaction: number };
+  reactionEmojis: string[];
+  weeklyHighlight: boolean;
+  timezone: string;
+  auth: { sessionDays: number; pluginTokenDays: number };
+}
+
+export class ConfigError extends Error {}
+
+/** 이모지 비교용 정규화 (❤️ vs ❤ 처럼 variation selector 차이를 무시) */
+export function normalizeEmoji(e: string): string {
+  return e.replace(/️/g, '').trim();
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const parsed = EnvSchema.safeParse(env);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new ConfigError(`환경 변수 설정이 올바르지 않습니다:\n${msg}`);
+  }
+  const e = parsed.data;
+
+  const botEnabled = e.BOT_ENABLED && !!e.DISCORD_TOKEN;
+  const archiveDriver = e.ARCHIVE_DRIVER ?? (botEnabled ? 'discord' : 'local');
+
+  if (archiveDriver === 'discord') {
+    if (!e.DISCORD_TOKEN) throw new ConfigError('ARCHIVE_DRIVER=discord 이면 DISCORD_TOKEN 이 필요합니다.');
+    if (!e.ARCHIVE_CHANNEL_ID && !(e.ARCHIVE_CHANNEL_GM_THUMBNAIL && e.ARCHIVE_CHANNEL_GM_ARTWORK && e.ARCHIVE_CHANNEL_NON_GM)) {
+      throw new ConfigError('원본 보관 채널(ARCHIVE_CHANNEL_ID)을 설정해 주세요.');
+    }
+  }
+
+  let s3: Config['storage']['s3'];
+  if (e.STORAGE_DRIVER === 's3') {
+    if (!e.S3_BUCKET || !e.S3_ACCESS_KEY_ID || !e.S3_SECRET_ACCESS_KEY) {
+      throw new ConfigError('STORAGE_DRIVER=s3 이면 S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY 가 필요합니다.');
+    }
+    s3 = {
+      endpoint: e.S3_ENDPOINT,
+      region: e.S3_REGION,
+      bucket: e.S3_BUCKET,
+      accessKeyId: e.S3_ACCESS_KEY_ID,
+      secretAccessKey: e.S3_SECRET_ACCESS_KEY,
+      prefix: e.S3_PREFIX.replace(/^\/+|\/+$/g, ''),
+    };
+  }
+
+  const reactionEmojis = [...new Set(e.REACTION_EMOJIS.split(',').map(normalizeEmoji).filter(Boolean))];
+  if (reactionEmojis.length === 0) throw new ConfigError('REACTION_EMOJIS 에 최소 1개의 이모지가 필요합니다.');
+  if (reactionEmojis.length > 5) throw new ConfigError('REACTION_EMOJIS 는 최대 5개까지 설정할 수 있습니다.');
+
+  return {
+    env: e.NODE_ENV,
+    isProduction: e.NODE_ENV === 'production',
+    port: e.PORT,
+    host: e.HOST,
+    publicBaseUrl: e.PUBLIC_BASE_URL.replace(/\/+$/, ''),
+    corsOrigins: e.CORS_ORIGINS,
+    webDir: path.resolve(e.WEB_DIR),
+    dataDir: path.resolve(e.DATA_DIR),
+    discord: {
+      botEnabled,
+      token: e.DISCORD_TOKEN,
+      clientId: e.DISCORD_CLIENT_ID,
+      clientSecret: e.DISCORD_CLIENT_SECRET,
+      guildId: e.DISCORD_GUILD_ID,
+      archiveChannelId: e.ARCHIVE_CHANNEL_ID,
+      archiveChannels: {
+        gm_thumbnail: e.ARCHIVE_CHANNEL_GM_THUMBNAIL,
+        gm_artwork: e.ARCHIVE_CHANNEL_GM_ARTWORK,
+        non_gm: e.ARCHIVE_CHANNEL_NON_GM,
+      },
+      highlightChannelId: e.HIGHLIGHT_CHANNEL_ID,
+      uploadChannelIds: e.UPLOAD_CHANNEL_IDS,
+      adminRoleIds: e.ADMIN_ROLE_IDS,
+      requireGuildMembership: e.REQUIRE_GUILD_MEMBERSHIP,
+      oauthEnabled: !!(e.DISCORD_CLIENT_ID && e.DISCORD_CLIENT_SECRET),
+    },
+    database: { url: e.DATABASE_URL, ssl: e.DATABASE_SSL },
+    storage: {
+      driver: e.STORAGE_DRIVER,
+      s3,
+      publicBaseUrl: e.PREVIEW_PUBLIC_BASE_URL?.replace(/\/+$/, ''),
+    },
+    archiveDriver,
+    upload: {
+      maxBytes: Math.round(e.MAX_UPLOAD_MB * 1024 * 1024),
+      previewMaxSize: e.PREVIEW_MAX_SIZE,
+      previewQuality: e.PREVIEW_QUALITY,
+      duplicateThreshold: e.DUPLICATE_THRESHOLD,
+    },
+    scoring: { pointsPerUpload: e.POINTS_PER_UPLOAD, pointsPerReaction: e.POINTS_PER_REACTION },
+    reactionEmojis,
+    weeklyHighlight: e.WEEKLY_HIGHLIGHT,
+    timezone: e.TIMEZONE,
+    auth: { sessionDays: e.SESSION_DAYS, pluginTokenDays: e.PLUGIN_TOKEN_DAYS },
+  };
+}

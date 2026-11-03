@@ -1,0 +1,38 @@
+{
+  "name": "gfx-reference-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GFX References 디스코드 봇 + API + 웹사이트 서버",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy-commands": "tsx src/bot/deploy-commands.ts",
+    "deploy-commands:prod": "node dist/bot/deploy-commands.js",
+    "migrate": "tsx src/db/migrate-cli.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@electric-sql/pglite": "^0.5.15",
+    "@hono/node-server": "^2.1.6",
+    "discord.js": "^14.28.0",
+    "hono": "^4.13.16",
+    "pg": "^8.23.1",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vitest": "^5.1.0"
+  }
+}

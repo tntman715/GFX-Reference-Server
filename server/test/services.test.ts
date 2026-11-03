@@ -301,3 +301,13 @@ describe('기기 연동 (플러그인/사이트 ↔ 디스코드)', () => {
     expect((await ctx.community.pollDeviceCode(deviceCode)).status).toBe('expired');
   });
 });
+
+describe('설정 저장소 (kv)', () => {
+  it('문자열 · 숫자 · 객체를 저장한 그대로 돌려줌', async () => {
+    expect(await ctx.community.kvGet('none')).toBeNull();
+    for (const value of ['e59f7023c3', '123', 42, { week: '2026-W45' }]) {
+      await ctx.community.kvSet('k', value);
+      expect(await ctx.community.kvGet('k')).toEqual(value);
+    }
+  });
+});

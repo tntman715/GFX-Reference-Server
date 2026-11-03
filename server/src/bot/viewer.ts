@@ -66,7 +66,7 @@ export class Viewer {
       nav.addComponents(new ButtonBuilder().setCustomId(`v:${session.id}:0`).setEmoji('🎲').setLabel('다른 거 뽑기').setStyle(ButtonStyle.Success));
     } else {
       nav.addComponents(
-        new ButtonBuilder().setCustomId(`v:${session.id}:${Math.max(0, index - 10)}:f`).setEmoji('⏪').setStyle(ButtonStyle.Secondary).setDisabled(index === 0),
+        new ButtonBuilder().setCustomId(`v:${session.id}:${Math.max(0, index - 10)}:b`).setEmoji('⏪').setStyle(ButtonStyle.Secondary).setDisabled(index === 0),
         new ButtonBuilder().setCustomId(`v:${session.id}:${index - 1}`).setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(index === 0),
         new ButtonBuilder().setCustomId(`v:${session.id}:noop`).setLabel(`${index + 1} / ${page.total}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
         new ButtonBuilder().setCustomId(`v:${session.id}:${index + 1}`).setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(index >= page.total - 1),

@@ -212,8 +212,12 @@ describe('/검색 과 버튼', () => {
   it('검색 조건 + 결과 없음', async () => {
     const t = interaction('command', { commandName: 'search', values: { tags: 'glow', color: 'red' } });
     await t.run();
-    expect(t.last('editReply').embeds[0].title).toBe('#1 · Red Map');
-    const none = interaction('command', { commandName: 'search', values: { query: 'zzz', public: true } });
+    const one = t.last('editReply');
+    expect(one.embeds[0].title).toBe('#1 · Red Map');
+    // 결과가 1개면 ⏪/⏩ 가 같은 위치를 가리키지만 custom_id 는 달라야 디스코드가 받아줌
+    const ids = one.components.flatMap((row: any) => row.components.map((c: any) => c.custom_id));
+    expect(new Set(ids).size).toBe(ids.length);
+    const none =interaction('command', { commandName: 'search', values: { query: 'zzz', public: true } });
     await none.run();
     expect(none.calls[0]).toEqual(['deferReply', { flags: undefined }]);
     expect(none.last('editReply').content).toContain('"zzz"');

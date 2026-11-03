@@ -2,10 +2,10 @@ import type { Queryable } from '../db/index.js';
 
 export const kvRepo = {
   async get<T>(q: Queryable, key: string): Promise<T | null> {
-    const rows = await q.query<{ value: unknown }>('SELECT value FROM kv WHERE key = $1', [key]);
+    // 드라이버가 jsonb 를 미리 풀어주면 문자열 값과 JSON 텍스트를 구분할 수 없으므로 항상 텍스트로 받아서 파싱
+    const rows = await q.query<{ value: string }>('SELECT value::text AS value FROM kv WHERE key = $1', [key]);
     if (!rows[0]) return null;
-    const v = rows[0].value;
-    return (typeof v === 'string' ? JSON.parse(v) : v) as T;
+    return JSON.parse(rows[0].value) as T;
   },
   async set(q: Queryable, key: string, value: unknown): Promise<void> {
     await q.query(

@@ -1,0 +1,14 @@
+# docker compose up -d --build
+# server/.env 를 먼저 만들어 주세요 (server/.env.example 참고)
+services:
+  gfx:
+    build: .
+    env_file: server/.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - gfx-data:/data
+    restart: unless-stopped
+
+volumes:
+  gfx-data:

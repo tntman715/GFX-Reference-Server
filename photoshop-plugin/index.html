@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- 서버 설정 -->
+    <section id="view-setup" class="view hidden">
+      <div class="card">
+        <h2>GFX References 연결</h2>
+        <p class="dim">GFX References 사이트 주소를 입력하세요.</p>
+        <input id="server-url" type="text" placeholder="https://gfx.example.com" />
+        <div class="row end">
+          <button id="save-server" class="primary">저장</button>
+        </div>
+        <p id="setup-error" class="error hidden"></p>
+      </div>
+    </section>
+
+    <!-- 메인 -->
+    <section id="view-main" class="view hidden">
+      <header class="bar">
+        <div class="account" id="account"></div>
+        <button id="open-settings" class="icon" title="설정">⚙</button>
+      </header>
+
+      <div class="search">
+        <input id="q" type="text" placeholder="제목 · 맵 · 제작자 · 태그 · #번호" />
+        <div class="row">
+          <select id="category"><option value="">전체 분류</option></select>
+          <select id="color"><option value="">모든 색</option></select>
+        </div>
+        <div class="row">
+          <select id="tag"><option value="">모든 태그</option></select>
+          <select id="sort">
+            <option value="newest">최신순</option>
+            <option value="popular">인기순</option>
+            <option value="random">무작위</option>
+            <option value="oldest">오래된순</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="meta-line"><span id="count" class="dim"></span><button id="random" class="link">🎲 랜덤</button></div>
+      <div id="results" class="results"></div>
+      <div class="row center"><button id="more" class="hidden">더 보기</button></div>
+    </section>
+
+    <!-- 상세 -->
+    <section id="view-detail" class="view hidden">
+      <header class="bar">
+        <button id="back" class="link">← 목록</button>
+        <span id="detail-id" class="dim"></span>
+      </header>
+      <div class="detail-img"><img id="detail-img" alt="" /></div>
+      <h3 id="detail-title"></h3>
+      <div id="detail-meta" class="dim small"></div>
+      <div id="detail-tags" class="tags"></div>
+      <p class="small dim label">팔레트 · 누르면 전경색으로 설정</p>
+      <div id="detail-palette" class="palette"></div>
+      <div class="actions">
+        <button id="place" class="primary">＋ 새 레이어로 불러오기</button>
+        <button id="open-doc">새 문서로 열기</button>
+        <div class="row">
+          <button id="react" class="half">⭐</button>
+          <button id="open-site" class="half">사이트에서 보기</button>
+        </div>
+      </div>
+      <p id="detail-status" class="small dim"></p>
+    </section>
+
+    <!-- 연동 -->
+    <section id="view-link" class="view hidden">
+      <div class="card">
+        <h2>디스코드 연동</h2>
+        <p class="dim">원본을 불러오려면 GFX References 디스코드 계정과 연동해야 해요.</p>
+        <div id="link-body">
+          <button id="start-link" class="primary block">연동 코드 받기</button>
+        </div>
+        <div class="row end"><button id="cancel-link" class="link">나중에</button></div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="main.js"></script>
+  </body>
+</html>

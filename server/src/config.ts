@@ -83,7 +83,8 @@ const EnvSchema = z.object({
   ARCHIVE_DRIVER: z.enum(['discord', 'local']).optional(),
 
   // ── 업로드 / 이미지 ─────────────────────────────────────
-  MAX_UPLOAD_MB: z.coerce.number().positive().default(25),
+  /** 봇이 아카이브 채널에 다시 올려야 하므로 서버 부스트 등급의 첨부 한도 이하로 (기본 10MB, 부스트 2레벨 50MB, 3레벨 100MB) */
+  MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
   PREVIEW_MAX_SIZE: z.coerce.number().int().positive().default(720),
   PREVIEW_QUALITY: z.coerce.number().int().min(30).max(100).default(72),
   /** dHash 해밍 거리 이하이면 중복으로 의심 (0~64, 0 이면 검사 안 함) */

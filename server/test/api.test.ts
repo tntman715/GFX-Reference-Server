@@ -13,7 +13,6 @@ const fakeBot: BotBridge = {
   sendOriginalDm: async (userId, ref) => {
     dms.push({ userId, refId: ref.id });
   },
-  isGuildMember: async () => true,
   inviteInfo: () => ({ guildName: 'GFX References', botName: 'GFX Bot' }),
 };
 
@@ -121,7 +120,9 @@ describe('공개 API', () => {
 
     expect((await app.request('/api/refs/99999')).status).toBe(404);
     expect((await app.request('/api/refs/abc')).status).toBe(404);
-    expect((await app.request('/api/previews/../../etc/passwd')).status).toBe(404);
+    // 인코딩된 경로 탈출 시도는 저장소 키 검사에서 막힘
+    expect((await app.request('/api/previews/..%2F..%2Fetc%2Fpasswd')).status).toBe(404);
+    expect((await app.request('/api/previews/previews%2F..%2F..%2Fconfig')).status).toBe(404);
     expect((await app.request('/api/nope')).status).toBe(404);
   });
 
@@ -239,6 +240,30 @@ describe('로그인이 필요한 API', () => {
   });
 });
 
+describe('보안', () => {
+  it('쿠키 인증 POST 는 다른 출처에서 막힘', async () => {
+    const { a } = await seed();
+    const webToken = await login(bob, 'web');
+    const req = (origin?: string) =>
+      app.request(`/api/refs/${a.id}/reactions`, {
+        method: 'POST',
+        headers: { Cookie: `gfx_token=${webToken}`, 'Content-Type': 'text/plain', ...(origin ? { Origin: origin } : {}) },
+        body: JSON.stringify({ emoji: '⭐' }),
+      });
+    expect((await req('https://evil.example')).status).toBe(403);
+    expect((await req('http://localhost:3000')).status).toBe(200);
+    expect((await req()).status).toBe(200); // Origin 없는 요청(같은 출처 또는 도구)
+    // 토큰(Bearer) 인증은 Origin 과 무관 (플러그인)
+    const token = await login(bob);
+    const bearer = await app.request(`/api/refs/${a.id}/reactions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Origin: 'https://evil.example', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji: '🔥' }),
+    });
+    expect(bearer.status).toBe(200);
+  });
+});
+
 describe('봇 오프라인', () => {
   it('원본 다운로드/코드 연동은 503', async () => {
     const offline = await makeContext({}, { ...fakeBot, isOnline: () => false });
@@ -256,5 +281,10 @@ describe('정적 웹사이트', () => {
     // web/ 폴더가 아직 없으면 404 메시지
     expect([200, 404]).toContain(res.status);
     expect((await app.request('/../server/package.json')).status).not.toBe(200);
+    const encoded = await app.request('/%2e%2e/server/package.json');
+    expect(encoded.status).not.toBe(200);
+    expect(await encoded.text()).not.toContain('gfx-reference-server');
+    const passwd = await app.request('/..%2F..%2F..%2Fetc%2Fpasswd');
+    expect(await passwd.text()).not.toContain('root:');
   });
 });

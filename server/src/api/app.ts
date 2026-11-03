@@ -89,6 +89,19 @@ export function createApi(ctx: AppContext): Hono<Env> {
     );
   }
 
+  // ── CSRF: 쿠키로 인증하는 쓰기 요청은 허용된 Origin 에서만 ──
+  const allowedOrigins = new Set([new URL(config.publicBaseUrl).origin, ...config.corsOrigins]);
+  app.use('/api/*', async (c, next) => {
+    const method = c.req.method;
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && !c.req.header('authorization')) {
+      const origin = c.req.header('origin');
+      if (origin && origin !== new URL(c.req.url).origin && !allowedOrigins.has(origin)) {
+        return c.json({ error: '허용되지 않은 출처의 요청입니다.', code: 'bad_origin' }, 403);
+      }
+    }
+    await next();
+  });
+
   // ── 인증 ────────────────────────────────────────────────
   app.use('/api/*', async (c, next) => {
     const header = c.req.header('authorization');
@@ -176,7 +189,8 @@ export function createApi(ctx: AppContext): Hono<Env> {
       result = await refs.popular({ ...filters, period: isPopularPeriod(q.period) ? q.period : 'all', limit: pageSize, offset });
     } else {
       const effective = sort ?? (filters.color ? 'color' : 'newest');
-      result = await refs.search({ ...filters, sort: effective, limit: pageSize, offset });
+      const seed = effective === 'random' && q.seed ? q.seed.slice(0, 32) : undefined;
+      result = await refs.search({ ...filters, sort: effective, seed, limit: pageSize, offset });
     }
     const viewer = c.get('user');
     return c.json({

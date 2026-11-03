@@ -45,6 +45,8 @@ export interface SearchOptions extends SearchFilters {
   sort?: SearchSort;
   /** 인기순일 때 이 시점 이후의 반응만 집계 */
   since?: Date | null;
+  /** 무작위 정렬을 페이지를 넘겨도 같은 순서로 유지하기 위한 값 */
+  seed?: string;
   limit?: number;
   offset?: number;
 }
@@ -264,7 +266,7 @@ export const refsRepo = {
         order = 'period_reactions DESC, reaction_total DESC, r.id DESC';
         break;
       case 'random':
-        order = 'random()';
+        order = opts.seed ? `md5(r.id::text || ${p.add(opts.seed)})` : 'random()';
         break;
       case 'color':
         order = opts.color ? `COALESCE((r.color_shares->>${p.add(opts.color)})::float, 0) DESC, r.id DESC` : 'r.id DESC';

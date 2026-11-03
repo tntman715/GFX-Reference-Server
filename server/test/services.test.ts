@@ -126,6 +126,20 @@ describe('검색', () => {
     expect((await ctx.refs.search({ q: '%' })).total).toBe(0);
   });
 
+  it('무작위 정렬은 같은 seed 면 페이지를 넘겨도 중복 없음', async () => {
+    await seed();
+    for (let i = 0; i < 3; i++) {
+      await ctx.refs.create({ file: file(await makeImage(`#${i}${i}0000`, '#ffffff', { shape: 'text' })), category: 'non_gm', uploader: carol }, { allowDuplicate: true });
+    }
+    const pages = [];
+    for (let offset = 0; offset < 6; offset += 2) {
+      pages.push(...(await ctx.refs.search({ sort: 'random', seed: 'abc', limit: 2, offset })).items.map((i) => i.id));
+    }
+    expect(new Set(pages).size).toBe(6);
+    const again = (await ctx.refs.search({ sort: 'random', seed: 'abc', limit: 6 })).items.map((i) => i.id);
+    expect(again).toEqual(pages);
+  });
+
   it('랜덤', async () => {
     const { a } = await seed();
     const r = await ctx.refs.random({ category: 'gm_thumbnail' });

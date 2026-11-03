@@ -173,6 +173,7 @@ export function mountExplore(root, params) {
     clear(resultsEl);
     countEl.textContent = '검색 중…';
     const s = { ...state };
+    const seed = Math.random().toString(36).slice(2, 10);
     grid = new ResultsGrid({
       load: (page) =>
         api.get('/api/refs', {
@@ -183,6 +184,7 @@ export function mountExplore(root, params) {
           hex: s.hex,
           sort: s.hex ? undefined : s.sort || undefined,
           period: s.sort === 'popular' ? 'all' : undefined,
+          seed: s.sort === 'random' ? seed : undefined,
           creator: s.creator,
           uploader: s.uploader,
           page,

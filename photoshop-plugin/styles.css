@@ -1,0 +1,286 @@
+/* UXP 는 CSS grid 와 일부 속성을 지원하지 않아 flex + margin 위주로 작성했습니다. */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--uxp-host-text-color, #e6e6e6);
+  background-color: var(--uxp-host-background-color, #323232);
+  font-family: var(--uxp-host-font-family, sans-serif);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.dim {
+  color: var(--uxp-host-text-color-secondary, #a0a0a0);
+}
+
+.small {
+  font-size: 11px;
+}
+
+.error {
+  color: #ff6b7a;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 6px 0;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 8px 0 2px 0;
+}
+
+p {
+  margin: 4px 0 8px 0;
+}
+
+input,
+select {
+  width: 100%;
+  height: 26px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--uxp-host-border-color, #555);
+  background-color: var(--uxp-host-widget-hover-background-color, #262626);
+  color: var(--uxp-host-text-color, #e6e6e6);
+  padding: 0 6px;
+  margin-bottom: 6px;
+}
+
+button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--uxp-host-border-color, #555);
+  background-color: var(--uxp-host-widget-hover-background-color, #3d3d3d);
+  color: var(--uxp-host-text-color, #e6e6e6);
+  cursor: pointer;
+}
+
+button.primary {
+  background-color: #7b5cff;
+  border-color: #7b5cff;
+  color: #fff;
+}
+
+button.link {
+  border: none;
+  background-color: transparent;
+  padding: 0 4px;
+  color: #a990ff;
+}
+
+button.icon {
+  width: 26px;
+  padding: 0;
+}
+
+button.block {
+  width: 100%;
+}
+
+button:disabled {
+  opacity: 0.5;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.row > * + * {
+  margin-left: 6px;
+}
+
+.row.end {
+  justify-content: flex-end;
+}
+
+.row.center {
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.half {
+  flex: 1;
+}
+
+.card {
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--uxp-host-border-color, #4a4a4a);
+}
+
+.bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.account {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  overflow: hidden;
+}
+
+.account img {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  margin-right: 6px;
+}
+
+.search .row select {
+  flex: 1;
+}
+
+.meta-line {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2px 0 6px 0;
+}
+
+.results {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.thumb {
+  width: 48.5%;
+  margin-bottom: 8px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--uxp-host-border-color, #4a4a4a);
+  cursor: pointer;
+  background-color: #1b1b1f;
+}
+
+.thumb:hover {
+  border-color: #7b5cff;
+}
+
+.thumb img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb .t {
+  padding: 4px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thumb .s {
+  padding: 0 6px 5px 6px;
+  font-size: 10px;
+  color: var(--uxp-host-text-color-secondary, #a0a0a0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-img {
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #111;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.detail-img img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+}
+
+.tags {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.tags span {
+  padding: 2px 7px;
+  margin: 0 4px 4px 0;
+  border-radius: 10px;
+  border: 1px solid var(--uxp-host-border-color, #555);
+  font-size: 11px;
+}
+
+.label {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.palette div {
+  width: 28px;
+  height: 28px;
+  margin: 0 6px 6px 0;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+}
+
+.actions {
+  margin-top: 6px;
+}
+
+.actions > * {
+  margin-bottom: 6px;
+}
+
+.actions > button {
+  width: 100%;
+}
+
+.code {
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  text-align: center;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px dashed var(--uxp-host-border-color, #666);
+}
+
+.toast {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background-color: #222;
+  border: 1px solid #7b5cff;
+  color: #fff;
+}

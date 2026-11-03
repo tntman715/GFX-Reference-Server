@@ -134,18 +134,6 @@ export class BotRuntime implements BotBridge {
     return { guildName: guild?.name ?? null, botName: this.client.user?.username ?? null };
   }
 
-  async isGuildMember(userId: string): Promise<boolean> {
-    const guildId = this.config.discord.guildId;
-    if (!guildId) return true;
-    try {
-      const guild = await this.client.guilds.fetch(guildId);
-      await guild.members.fetch(userId);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   async sendOriginalDm(userId: string, ref: Reference, file: OriginalFile): Promise<void> {
     const user = await this.client.users.fetch(userId);
     try {
@@ -339,6 +327,7 @@ export class BotRuntime implements BotBridge {
   private async cmdSearch(i: ChatInputCommandInteraction) {
     const f = this.filtersFrom(i);
     const sort = i.options.getString('sort') ?? (f.color ? 'color' : 'newest');
+    const seed = crypto.randomBytes(6).toString('hex');
     const desc = this.describeFilters(f);
     await this.openViewer(i, {
       title: `🔎 ${desc || '전체'}`.slice(0, 80),
@@ -347,7 +336,7 @@ export class BotRuntime implements BotBridge {
       load: (offset) =>
         sort === 'popular'
           ? this.refs.popular({ ...f, period: 'all', limit: 1, offset })
-          : this.refs.search({ ...f, sort: sort as SearchOptions['sort'], limit: 1, offset }),
+          : this.refs.search({ ...f, sort: sort as SearchOptions['sort'], seed, limit: 1, offset }),
     });
   }
 

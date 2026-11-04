@@ -39,6 +39,17 @@ export const reactionsRepo = {
     return out;
   },
 
+  /** 반응 이모지를 다른 이모지로 옮김. 이미 둘 다 단 사람은 하나만 남김. 옮긴 개수 반환 */
+  async renameEmoji(q: Queryable, from: string, to: string): Promise<number> {
+    await q.query(
+      `DELETE FROM reactions a USING reactions b
+       WHERE a.emoji = $1 AND b.emoji = $2 AND a.ref_id = b.ref_id AND a.user_id = b.user_id`,
+      [from, to],
+    );
+    const rows = await q.query('UPDATE reactions SET emoji = $2 WHERE emoji = $1 RETURNING ref_id', [from, to]);
+    return rows.length;
+  },
+
   async counts(q: Queryable, refId: number): Promise<Record<string, number>> {
     const rows = await q.query<{ emoji: string; c: number }>(
       'SELECT emoji, count(*)::int AS c FROM reactions WHERE ref_id = $1 GROUP BY emoji',

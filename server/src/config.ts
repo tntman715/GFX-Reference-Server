@@ -92,8 +92,11 @@ const EnvSchema = z.object({
 
   // ── 점수 / 반응 ─────────────────────────────────────────
   POINTS_PER_UPLOAD: z.coerce.number().int().default(10),
-  POINTS_PER_REACTION: z.coerce.number().int().default(1),
-  REACTION_EMOJIS: z.string().default('⭐,🔥,💎'),
+  /** REACTION_POINTS 에 없는 반응의 점수 */
+  POINTS_PER_REACTION: z.coerce.number().min(0).default(1),
+  REACTION_EMOJIS: z.string().default('⭐,🔥,👍'),
+  /** 반응별 점수 (이모지:점수, 쉼표로 구분) */
+  REACTION_POINTS: z.string().default('⭐:2,🔥:1.5,👍:1'),
   WEEKLY_HIGHLIGHT: bool(true),
   /** 주간 하이라이트 기준 시간대 */
   TIMEZONE: z.string().default('Asia/Seoul'),
@@ -139,14 +142,47 @@ export interface Config {
     previewQuality: number;
     duplicateThreshold: number;
   };
-  scoring: { pointsPerUpload: number; pointsPerReaction: number };
+  scoring: ScoringConfig;
   reactionEmojis: string[];
   weeklyHighlight: boolean;
   timezone: string;
   auth: { sessionDays: number; pluginTokenDays: number };
 }
 
+export interface ScoringConfig {
+  pointsPerUpload: number;
+  /** reactionPoints 에 없는 반응의 점수 */
+  pointsPerReaction: number;
+  /** 반응 이모지별 점수. 설정된 반응 이모지는 모두 들어 있음 */
+  reactionPoints: Record<string, number>;
+}
+
 export class ConfigError extends Error {}
+
+/** 반응 하나가 주는 점수 */
+export function reactionPoints(scoring: ScoringConfig, emoji: string): number {
+  return scoring.reactionPoints[normalizeEmoji(emoji)] ?? scoring.pointsPerReaction;
+}
+
+/** "⭐ +2 · 🔥 +1.5 · 👍 +1" */
+export function reactionPointsText(config: Pick<Config, 'scoring' | 'reactionEmojis'>): string {
+  return config.reactionEmojis.map((e) => `${e} +${reactionPoints(config.scoring, e)}`).join(' · ');
+}
+
+function parseReactionPoints(raw: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of raw.split(',')) {
+    if (!part.trim()) continue;
+    const i = part.lastIndexOf(':');
+    const emoji = normalizeEmoji(i > 0 ? part.slice(0, i) : '');
+    const points = Number(i > 0 ? part.slice(i + 1).trim() : NaN);
+    if (!emoji || !Number.isFinite(points) || points < 0) {
+      throw new ConfigError(`REACTION_POINTS 형식이 올바르지 않습니다: "${part.trim()}" (예: ⭐:2,🔥:1.5,👍:1)`);
+    }
+    out[emoji] = points;
+  }
+  return out;
+}
 
 /** 이모지 비교용 정규화 (❤️ vs ❤ 처럼 variation selector 차이를 무시) */
 export function normalizeEmoji(e: string): string {
@@ -189,6 +225,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const reactionEmojis = [...new Set(e.REACTION_EMOJIS.split(',').map(normalizeEmoji).filter(Boolean))];
   if (reactionEmojis.length === 0) throw new ConfigError('REACTION_EMOJIS 에 최소 1개의 이모지가 필요합니다.');
   if (reactionEmojis.length > 5) throw new ConfigError('REACTION_EMOJIS 는 최대 5개까지 설정할 수 있습니다.');
+  const pointsByEmoji = parseReactionPoints(e.REACTION_POINTS);
+  for (const emoji of reactionEmojis) pointsByEmoji[emoji] ??= e.POINTS_PER_REACTION;
 
   return {
     env: e.NODE_ENV,
@@ -230,7 +268,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       previewQuality: e.PREVIEW_QUALITY,
       duplicateThreshold: e.DUPLICATE_THRESHOLD,
     },
-    scoring: { pointsPerUpload: e.POINTS_PER_UPLOAD, pointsPerReaction: e.POINTS_PER_REACTION },
+    scoring: { pointsPerUpload: e.POINTS_PER_UPLOAD, pointsPerReaction: e.POINTS_PER_REACTION, reactionPoints: pointsByEmoji },
     reactionEmojis,
     weeklyHighlight: e.WEEKLY_HIGHLIGHT,
     timezone: e.TIMEZONE,

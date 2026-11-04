@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ConfigError, loadConfig, reactionPointsText } from '../src/config.js';
+import { reactionsRepo } from '../src/repos/reactions.js';
 import { DuplicateError } from '../src/services/references.js';
 import { alice, bob, carol, file, makeContext, makeImage } from './helpers.js';
 
@@ -181,7 +183,7 @@ describe('반응 / 인기 / 점수', () => {
     await ctx.refs.toggleReaction(a.id, bob, '⭐');
     const off = await ctx.refs.toggleReaction(a.id, bob, '⭐');
     expect(off.active).toBe(false);
-    await ctx.refs.toggleReaction(c.id, bob, '💎');
+    await ctx.refs.toggleReaction(c.id, bob, '👍');
     await expect(ctx.refs.toggleReaction(c.id, bob, '🍕')).rejects.toThrow(/사용할 수 있는 반응/);
 
     const pop = await ctx.refs.popular({ period: 'week' });
@@ -198,21 +200,21 @@ describe('반응 / 인기 / 점수', () => {
     expect((await ctx.refs.popular({ period: 'month' })).items.map((i) => i.id)).toEqual([b.id, c.id]);
   });
 
-  it('점수: 업로드 + 받은 반응(자기 반응 제외) + 관리자 조정', async () => {
+  it('점수: 업로드 + 받은 반응(반응마다 점수, 자기 반응 제외) + 관리자 조정', async () => {
     const { a, b } = await seed(); // alice 2개, bob 1개
-    await ctx.refs.toggleReaction(a.id, bob, '⭐');
-    await ctx.refs.toggleReaction(a.id, carol, '⭐');
+    await ctx.refs.toggleReaction(a.id, bob, '⭐'); // +2
+    await ctx.refs.toggleReaction(a.id, carol, '👍'); // +1
     await ctx.refs.toggleReaction(a.id, alice, '⭐'); // 자기 반응 → 점수 X
-    await ctx.refs.toggleReaction(b.id, alice, '🔥');
+    await ctx.refs.toggleReaction(b.id, alice, '🔥'); // +1.5
 
     const board = await ctx.community.leaderboard(1, 10);
     expect(board.total).toBe(2);
-    expect(board.rows[0]).toMatchObject({ userId: alice.id, uploads: 2, reactionsReceived: 2, score: 22, rank: 1 });
-    expect(board.rows[1]).toMatchObject({ userId: bob.id, uploads: 1, reactionsReceived: 1, score: 11, rank: 2 });
+    expect(board.rows[0]).toMatchObject({ userId: alice.id, uploads: 2, reactionsReceived: 2, score: 23, rank: 1 });
+    expect(board.rows[1]).toMatchObject({ userId: bob.id, uploads: 1, reactionsReceived: 1, score: 11.5, rank: 2 });
 
     await ctx.community.adjustScore(bob.id, 20, '이벤트 보상', admin);
     const bobScore = await ctx.community.score(bob.id);
-    expect(bobScore).toMatchObject({ score: 31, rank: 1, adjustments: 20 });
+    expect(bobScore).toMatchObject({ score: 31.5, rank: 1, adjustments: 20 });
     await expect(ctx.community.adjustScore(bob.id, 5, null, { id: 'x', isAdmin: false })).rejects.toThrow(/관리자/);
 
     // 레퍼런스를 지우면 점수도 빠짐
@@ -222,6 +224,41 @@ describe('반응 / 인기 / 점수', () => {
     const profile = await ctx.community.profile(alice.id);
     expect(profile.categories).toEqual({ non_gm: 1 });
     expect(profile.recent).toHaveLength(1);
+  });
+});
+
+describe('반응 점수 설정', () => {
+  const base = { NODE_ENV: 'test', BOT_ENABLED: 'false', PUBLIC_BASE_URL: 'http://localhost:3000' };
+
+  it('기본값: ⭐ 2 · 🔥 1.5 · 👍 1', () => {
+    const config = loadConfig(base);
+    expect(config.reactionEmojis).toEqual(['⭐', '🔥', '👍']);
+    expect(config.scoring.reactionPoints).toEqual({ '⭐': 2, '🔥': 1.5, '👍': 1 });
+    expect(reactionPointsText(config)).toBe('⭐ +2 · 🔥 +1.5 · 👍 +1');
+  });
+
+  it('REACTION_POINTS 에 없는 반응은 POINTS_PER_REACTION 점', () => {
+    const config = loadConfig({ ...base, REACTION_EMOJIS: '⭐,❤️', REACTION_POINTS: '⭐:3', POINTS_PER_REACTION: '0.5' });
+    expect(config.scoring.reactionPoints).toEqual({ '⭐': 3, '❤': 0.5 });
+  });
+
+  it('형식이 틀리면 알려줌', () => {
+    expect(() => loadConfig({ ...base, REACTION_POINTS: '⭐:많이' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...base, REACTION_POINTS: '⭐:-1' })).toThrow(/REACTION_POINTS/);
+  });
+
+  it('예전 💎 반응을 👍 로 옮김 (둘 다 단 사람은 하나만)', async () => {
+    const { a, b } = await seed();
+    await ctx.db.query("INSERT INTO reactions (ref_id, user_id, emoji) VALUES ($1, $2, '💎'), ($1, $3, '💎'), ($4, $2, '💎')", [
+      a.id,
+      bob.id,
+      carol.id,
+      b.id,
+    ]);
+    await ctx.refs.toggleReaction(b.id, bob, '👍');
+    expect(await reactionsRepo.renameEmoji(ctx.db, '💎', '👍')).toBe(2);
+    expect(await reactionsRepo.counts(ctx.db, a.id)).toEqual({ '👍': 2 });
+    expect(await reactionsRepo.counts(ctx.db, b.id)).toEqual({ '👍': 1 });
   });
 });
 

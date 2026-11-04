@@ -14,20 +14,25 @@ export interface ScoreRow {
 
 export interface ScoringRules {
   pointsPerUpload: number;
+  /** reactionPoints 에 없는 반응의 점수 */
   pointsPerReaction: number;
+  /** 반응 이모지별 점수 (예: ⭐ 2, 🔥 1.5, 👍 1) */
+  reactionPoints: Record<string, number>;
 }
 
 /**
- * 점수 = 업로드 수 × 업로드 점수 + 받은 반응 수 × 반응 점수 + 관리자 조정
+ * 점수 = 업로드 수 × 업로드 점수 + 받은 반응마다 그 반응의 점수 + 관리자 조정
  * (자기 레퍼런스에 단 반응은 점수에 들어가지 않습니다)
  * 저장된 값이 아니라 매번 계산하므로 레퍼런스를 지우면 점수도 자동으로 빠집니다.
+ * 매개변수: $1 업로드 점수, $2 반응별 점수(JSON), $3 그 밖의 반응 점수
  */
 function scoreCte(): string {
   return `
   WITH uploads AS (
     SELECT uploader_id AS uid, count(*)::int AS n FROM refs GROUP BY uploader_id
   ), received AS (
-    SELECT r.uploader_id AS uid, count(*)::int AS n
+    SELECT r.uploader_id AS uid, count(*)::int AS n,
+      sum(COALESCE((($2::jsonb) ->> x.emoji)::numeric, $3::numeric)) AS pts
     FROM reactions x JOIN refs r ON r.id = x.ref_id
     WHERE x.user_id <> r.uploader_id
     GROUP BY r.uploader_id
@@ -38,7 +43,7 @@ function scoreCte(): string {
       COALESCE(up.n, 0) AS uploads,
       COALESCE(rc.n, 0) AS reactions_received,
       COALESCE(a.n, 0) AS adjustments,
-      (COALESCE(up.n, 0) * $1::int + COALESCE(rc.n, 0) * $2::int + COALESCE(a.n, 0))::int AS score
+      round(COALESCE(up.n, 0) * $1::numeric + COALESCE(rc.pts, 0) + COALESCE(a.n, 0), 2) AS score
     FROM users u
     LEFT JOIN uploads up ON up.uid = u.discord_id
     LEFT JOIN received rc ON rc.uid = u.discord_id
@@ -75,32 +80,29 @@ function mapRow(r: Row): ScoreRow {
   };
 }
 
+function params(rules: ScoringRules): [number, string, number] {
+  return [rules.pointsPerUpload, JSON.stringify(rules.reactionPoints), rules.pointsPerReaction];
+}
+
 export const scoresRepo = {
   async leaderboard(q: Queryable, rules: ScoringRules, limit = 10, offset = 0): Promise<{ rows: ScoreRow[]; total: number }> {
     const rows = await q.query<Row & { total: number }>(
       `${scoreCte()}
        SELECT *, count(*) OVER()::int AS total FROM ranked
        ORDER BY score DESC, uploads DESC, discord_id
-       LIMIT $3 OFFSET $4`,
-      [rules.pointsPerUpload, rules.pointsPerReaction, limit, offset],
+       LIMIT $4 OFFSET $5`,
+      [...params(rules), limit, offset],
     );
     let total = Number(rows[0]?.total ?? 0);
     if (!rows.length && offset > 0) {
-      const c = await q.query<{ n: number }>(`${scoreCte()} SELECT count(*)::int AS n FROM ranked`, [
-        rules.pointsPerUpload,
-        rules.pointsPerReaction,
-      ]);
+      const c = await q.query<{ n: number }>(`${scoreCte()} SELECT count(*)::int AS n FROM ranked`, params(rules));
       total = Number(c[0]?.n ?? 0);
     }
     return { rows: rows.map(mapRow), total };
   },
 
   async forUser(q: Queryable, rules: ScoringRules, userId: string): Promise<ScoreRow | null> {
-    const rows = await q.query<Row>(`${scoreCte()} SELECT * FROM ranked WHERE discord_id = $3`, [
-      rules.pointsPerUpload,
-      rules.pointsPerReaction,
-      userId,
-    ]);
+    const rows = await q.query<Row>(`${scoreCte()} SELECT * FROM ranked WHERE discord_id = $4`, [...params(rules), userId]);
     return rows[0] ? mapRow(rows[0]) : null;
   },
 

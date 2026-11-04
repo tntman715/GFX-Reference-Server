@@ -2,8 +2,17 @@ import { api } from '../api.js';
 import { emptyState } from '../components.js';
 import { avatarSrc, clear, h, spinner } from '../dom.js';
 import { t } from '../i18n.js';
+import { store } from '../store.js';
 
 const pad = (n) => String(n).padStart(2, '0');
+
+/** "⭐ +2 · 🔥 +1.5 · 👍 +1" */
+function reactionRules(scoring) {
+  const points = scoring.reactionPoints ?? {};
+  return (store.meta?.reactions ?? Object.keys(points))
+    .map((e) => `${e} +${points[e] ?? scoring.pointsPerReaction}`)
+    .join(' · ');
+}
 
 export function mountLeaderboard(root, params, { navigate }) {
   let page = Math.max(1, Number(params.get('page')) || 1);
@@ -15,7 +24,7 @@ export function mountLeaderboard(root, params, { navigate }) {
     clear(body).append(spinner());
     try {
       const data = await api.get('/api/leaderboard', { page, limit: 20 });
-      rules.textContent = t('ranking.rules', { u: data.scoring.pointsPerUpload, r: data.scoring.pointsPerReaction });
+      rules.textContent = t('ranking.rules', { u: data.scoring.pointsPerUpload, r: reactionRules(data.scoring) });
       clear(body);
       if (!data.rows.length) {
         body.append(emptyState(t('ranking.empty')));

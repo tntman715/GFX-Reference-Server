@@ -86,7 +86,7 @@ const STRINGS = {
     'colors.empty': '이 색이 들어간 레퍼런스가 없어요.',
 
     // 랭킹
-    'ranking.rules': '업로드 1개당 +{u}점, 내 레퍼런스가 받은 반응 1개당 +{r}점 (내가 단 반응은 빼고 셉니다)',
+    'ranking.rules': '업로드 1개당 +{u}점, 내 레퍼런스가 받은 반응 {r} (내가 단 반응은 빼고 셉니다)',
     'ranking.empty': '아직 랭킹이 없어요.',
     'ranking.points': '{n}점',
     'ranking.detail': '업로드 {u} · 받은 반응 {r}',
@@ -199,7 +199,7 @@ const STRINGS = {
     'colors.choose': 'Pick a color above or enter a color code.',
     'colors.empty': 'No references with this color.',
 
-    'ranking.rules': '+{u} per upload, +{r} per reaction received (your own reactions are not counted)',
+    'ranking.rules': '+{u} per upload, reactions received {r} (your own reactions are not counted)',
     'ranking.empty': 'No rankings yet.',
     'ranking.points': '{n} pts',
     'ranking.detail': 'Uploads {u} · Reactions {r}',

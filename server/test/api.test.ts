@@ -58,7 +58,8 @@ describe('공개 API', () => {
     expect(m.categories[0]).toMatchObject({ label: '지메 썸네일', requiresMapName: true });
     expect(m.tags).toHaveLength(11);
     expect(m.tags.find((t: any) => t.name === 'glow').count).toBe(1);
-    expect(m.reactions).toEqual(['⭐', '🔥', '💎']);
+    expect(m.reactions).toEqual(['⭐', '🔥', '👍']);
+    expect(m.scoring.reactionPoints).toEqual({ '⭐': 2, '🔥': 1.5, '👍': 1 });
     expect(m.colors).toHaveLength(11);
     expect(m.stats.total).toBe(2);
     expect(m.bot.online).toBe(true);
@@ -130,7 +131,8 @@ describe('공개 API', () => {
     const { a } = await seed();
     await ctx.refs.toggleReaction(a.id, bob, '⭐');
     const lb = await json(await app.request('/api/leaderboard'));
-    expect(lb.rows[0]).toMatchObject({ userId: alice.id, score: 11, rank: 1 });
+    expect(lb.rows[0]).toMatchObject({ userId: alice.id, score: 12, rank: 1 }); // 업로드 10 + ⭐ 2
+    expect(lb.scoring.reactionPoints['⭐']).toBe(2);
     const p = await json(await app.request(`/api/users/${alice.id}`));
     expect(p.user.username).toBe('alice');
     expect(p.recent).toHaveLength(1);

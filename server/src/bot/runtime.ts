@@ -32,6 +32,7 @@ import {
   parseTagList,
   POPULAR_PERIODS,
 } from '../constants.js';
+import { reactionPointsText } from '../config.js';
 import type { AppContext, BotBridge } from '../context.js';
 import type { SearchOptions } from '../repos/references.js';
 import { type CreateReferenceInput, DuplicateError } from '../services/references.js';
@@ -473,7 +474,7 @@ export class BotRuntime implements BotBridge {
       .setColor(BRAND_COLOR)
       .setDescription(lines.join('\n') || '아직 레퍼런스를 올린 사람이 없어요. `/업로드` 로 첫 번째가 되어보세요!')
       .setFooter({
-        text: `업로드 +${this.config.scoring.pointsPerUpload}점 · 받은 반응 +${this.config.scoring.pointsPerReaction}점 · ${page}/${pages} 페이지`,
+        text: `업로드 +${this.config.scoring.pointsPerUpload}점 · 받은 반응 ${reactionPointsText(this.config)} · ${page}/${pages} 페이지`,
       });
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`lb:${page - 1}`).setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
@@ -610,7 +611,7 @@ export class BotRuntime implements BotBridge {
         [
           '**레퍼런스 올리기**',
           '`/업로드` 이미지 · 분류 · (맵이름) · 제작자 · 태그 — 원본은 서버 아카이브에, 미리보기는 데이터베이스에 저장돼요.',
-          `올릴 때마다 **+${this.config.scoring.pointsPerUpload}점**, 내 레퍼런스가 반응을 받으면 **+${this.config.scoring.pointsPerReaction}점**!`,
+          `올릴 때마다 **+${this.config.scoring.pointsPerUpload}점**, 내 레퍼런스가 반응을 받으면 ${reactionPointsText(this.config)}점`,
           '',
           '**찾기**',
           '`/검색` 검색어 · 분류 · 태그 · 색상 · 제작자 · 정렬',

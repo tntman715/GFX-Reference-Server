@@ -301,17 +301,18 @@ describe('/검색 과 버튼', () => {
   });
 
   it('/랭킹 · /프로필', async () => {
-    await ctx.refs.toggleReaction(1, { id: BOB.id, username: 'bob' }, '⭐');
+    await ctx.refs.toggleReaction(1, { id: BOB.id, username: 'bob' }, '🔥');
     const t = interaction('command', { commandName: 'leaderboard', values: {} });
     await t.run();
     const lb = t.last('reply');
-    expect(lb.embeds[0].description.split('\n')[0]).toBe(`🥇 <@${ALICE.id}> — **11점** · 업로드 1 · 받은 반응 1`);
+    expect(lb.embeds[0].description.split('\n')[0]).toBe(`🥇 <@${ALICE.id}> — **11.5점** · 업로드 1 · 받은 반응 1`);
+    expect(lb.embeds[0].footer.text).toContain('받은 반응 ⭐ +2 · 🔥 +1.5 · 👍 +1');
     expect(lb.embeds[0].description.split('\n')[1]).toBe(`🥈 <@${BOB.id}> — **10점** · 업로드 1 · 받은 반응 0`);
 
     const p = interaction('command', { commandName: 'profile', values: {} });
     await p.run();
     const prof = p.last('editReply').embeds[0];
-    expect(prof.title).toBe('11점 · 1위');
+    expect(prof.title).toBe('11.5점 · 1위');
     expect(prof.footer.text).toContain('#1 Red Map');
   });
 });

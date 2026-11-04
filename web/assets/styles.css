@@ -6,11 +6,13 @@
    ───────────────────────────────────────────────────────── */
 :root {
   /* 바탕 (어두운 순서) */
-  --bg: #0e0e0e;
-  --bg-elev: #171717;
-  --bg-card: #1f1f1f;
-  --bg-hover: #282828;
-  --bg-active: #333333;
+  --bg: #080808;
+  --bg-elev: #121212;
+  --bg-card: #1a1a1a;
+  --bg-hover: #232323;
+  --bg-active: #2e2e2e;
+  /* 색 면에 얹는 인쇄 질감 (아래 '색 면 질감' 참고) */
+  --print: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27160%27 height=%27160%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%27.9%27 numOctaves=%273%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix type=%27saturate%27 values=%270%27/%3E%3CfeComponentTransfer%3E%3CfeFuncR type=%27linear%27 slope=%271.7%27 intercept=%27-.45%27/%3E%3CfeFuncG type=%27linear%27 slope=%271.7%27 intercept=%27-.45%27/%3E%3CfeFuncB type=%27linear%27 slope=%271.7%27 intercept=%27-.45%27/%3E%3CfeFuncA type=%27linear%27 slope=%270%27 intercept=%27.5%27/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url%28%23n%29%27/%3E%3C/svg%3E");
   --paper: #ecebe6;
   --paper-dim: #d9d7d0;
   --ink: #111111;
@@ -50,7 +52,7 @@
   --mid: 0.3s;
 
   /* 글꼴 */
-  --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui,
+  --font: 'Inter Tight', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui,
     sans-serif;
   --display: 'Inter Tight', 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   --serif: 'Instrument Serif', 'Noto Serif KR', 'Nanum Myeongjo', Georgia, serif;
@@ -93,8 +95,8 @@ body::before {
   inset: -10%;
   z-index: 300;
   pointer-events: none;
-  opacity: 0.07;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.11;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1.1 -.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain 0.9s steps(5) infinite;
 }
 
@@ -187,7 +189,7 @@ img {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(14, 14, 14, 0.82);
+  background: rgba(8, 8, 8, 0.84);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
   border-bottom: 1px solid var(--line);
@@ -560,11 +562,11 @@ img {
 }
 
 .btn.primary:hover {
-  background: var(--accent-hover);
+  background-color: var(--accent-hover);
 }
 
 .btn.primary:disabled:hover {
-  background: var(--accent);
+  background-color: var(--accent);
 }
 
 /* 디스코드 로그인 버튼: 상단 바에서는 하얀 알약 */
@@ -575,7 +577,7 @@ img {
 }
 
 .btn.discord:hover {
-  background: #fff;
+  background-color: #fff;
 }
 
 .btn.ghost {
@@ -619,7 +621,7 @@ img {
 }
 
 .btn.view-all:hover {
-  background: var(--accent);
+  background-color: var(--accent);
 }
 
 .btn.view-all .arrow {
@@ -786,7 +788,7 @@ h3 {
   min-height: clamp(300px, 40vw, 500px);
   padding: 22px 26px 26px;
   border-radius: var(--radius-lg);
-  background: radial-gradient(120% 90% at 20% 0%, #5a1d00 0%, #1b0b02 55%, #0e0e0e 100%);
+  background: radial-gradient(120% 90% at 20% 0%, #4a1800 0%, #140801 55%, var(--bg) 100%);
 }
 
 /* 표지 사진: 사진 속 글씨가 큰 제목과 겹치지 않게 살짝 흐리게 두고,
@@ -877,15 +879,15 @@ h3 {
 }
 
 .hero-pills button:nth-child(1) {
-  background: var(--accent);
+  background-color: var(--accent);
   animation-delay: 0.1s;
 }
 .hero-pills button:nth-child(2) {
-  background: var(--accent-2);
+  background-color: var(--accent-2);
   animation-delay: 0.18s;
 }
 .hero-pills button:nth-child(3) {
-  background: var(--accent-3);
+  background-color: var(--accent-3);
   animation-delay: 0.26s;
 }
 
@@ -1359,13 +1361,13 @@ select.select option {
 }
 
 .card-badge.c0 {
-  background: var(--accent);
+  background-color: var(--accent);
 }
 .card-badge.c1 {
-  background: var(--accent-2);
+  background-color: var(--accent-2);
 }
 .card-badge.c2 {
-  background: var(--accent-3);
+  background-color: var(--accent-3);
 }
 
 .card:hover .card-badge {
@@ -1574,7 +1576,7 @@ select.select option {
 
 .detail-media {
   position: relative;
-  background: #080808;
+  background: #040404;
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   display: flex;
   flex-direction: column;
@@ -1884,10 +1886,11 @@ select.select option {
   border-radius: var(--radius);
   /* 네 귀퉁이의 작은 점 */
   background-image: radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px),
-    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px);
-  background-size: 12px 12px;
-  background-repeat: no-repeat;
-  background-position: 8px 8px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 8px) calc(100% - 8px);
+    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px), var(--print);
+  background-size: 12px 12px, 12px 12px, 12px 12px, 12px 12px, 160px 160px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-blend-mode: normal, normal, normal, normal, overlay;
+  background-position: 8px 8px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), 0 0;
 }
 
 .sheet.small .close-btn {
@@ -2255,10 +2258,11 @@ select.select option {
   background: var(--accent);
   color: var(--ink);
   background-image: radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px),
-    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px);
-  background-size: 12px 12px;
-  background-repeat: no-repeat;
-  background-position: 8px 8px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 8px) calc(100% - 8px);
+    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px), var(--print);
+  background-size: 12px 12px, 12px 12px, 12px 12px, 12px 12px, 160px 160px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-blend-mode: normal, normal, normal, normal, overlay;
+  background-position: 8px 8px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), 0 0;
 }
 
 .podium .p:nth-child(1):not(.first) {
@@ -2681,10 +2685,11 @@ select.select option {
   color: var(--ink);
   text-align: center;
   background-image: radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px),
-    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px);
-  background-size: 12px 12px;
-  background-repeat: no-repeat;
-  background-position: 10px 10px, calc(100% - 10px) 10px, 10px calc(100% - 10px), calc(100% - 10px) calc(100% - 10px);
+    radial-gradient(circle, var(--ink) 2.5px, transparent 3px), radial-gradient(circle, var(--ink) 2.5px, transparent 3px), var(--print);
+  background-size: 12px 12px, 12px 12px, 12px 12px, 12px 12px, 160px 160px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-blend-mode: normal, normal, normal, normal, overlay;
+  background-position: 10px 10px, calc(100% - 10px) 10px, 10px calc(100% - 10px), calc(100% - 10px) calc(100% - 10px), 0 0;
 }
 
 .footer-signal h2 {
@@ -2772,6 +2777,33 @@ select.select option {
   max-width: 260px;
   color: var(--text-faint);
   font-size: 12.5px;
+}
+
+/* ── 색 면 질감: 주황 · 초록 · 파랑 · 종이색 면에 인쇄물 같은 거친 결 ── */
+.nav a.active,
+.lang-switch button.on,
+.menu,
+.btn.primary,
+.btn.discord,
+.btn.view-all,
+.chip.on,
+.banner > div,
+.hero-pills button,
+.segmented button.on,
+.card-badge,
+.card-rank.r1,
+.card-rank.r2,
+.card-rank.r3,
+.color-tile.on,
+.podium .p:nth-child(1):not(.first),
+.podium .p:nth-child(3),
+.table,
+.bar .fill,
+.toast,
+.close-btn {
+  background-image: var(--print);
+  background-size: 160px 160px;
+  background-blend-mode: overlay;
 }
 
 /* ── 반응형 ─────────────────────────────────────────── */

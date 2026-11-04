@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const BASE = (window.GFX_CONFIG?.apiBase || '').replace(/\/+$/, '');
 
 export class ApiError extends Error {
@@ -32,7 +34,7 @@ async function request(method, path, { params, body } = {}) {
   } catch {
     /* 본문 없음 */
   }
-  if (!res.ok) throw new ApiError(data?.error || `요청 실패 (${res.status})`, res.status, data?.code);
+  if (!res.ok) throw new ApiError(data?.error || t('error.request', { status: res.status }), res.status, data?.code);
   return data;
 }
 
@@ -49,7 +51,7 @@ export const api = {
       try {
         data = await res.json();
       } catch {}
-      throw new ApiError(data?.error || `다운로드 실패 (${res.status})`, res.status, data?.code);
+      throw new ApiError(data?.error || t('error.download', { status: res.status }), res.status, data?.code);
     }
     const blob = await res.blob();
     const cd = res.headers.get('content-disposition') || '';

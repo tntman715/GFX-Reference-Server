@@ -1,3 +1,5 @@
+import { locale, t } from './i18n.js';
+
 /** 작은 DOM 헬퍼: h('div.card', { onclick }, child, ...) */
 export function h(tag, attrs, ...children) {
   const [name, ...classes] = tag.split('.');
@@ -11,7 +13,12 @@ export function h(tag, attrs, ...children) {
     if (v === undefined || v === null || v === false) continue;
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
     else if (k === 'class') el.className = [el.className, v].filter(Boolean).join(' ');
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'style' && typeof v === 'object') {
+      for (const [prop, val] of Object.entries(v)) {
+        if (prop.startsWith('--')) el.style.setProperty(prop, val);
+        else el.style[prop] = val;
+      }
+    }
     else if (k === 'dataset') Object.assign(el.dataset, v);
     else if (k === 'html') el.innerHTML = v;
     else if (v === true) el.setAttribute(k, '');
@@ -60,19 +67,40 @@ export function toast(message, kind = '') {
   const el = h('div.toast', { class: kind }, message);
   root.append(el);
   setTimeout(() => {
-    el.style.transition = 'opacity .3s';
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 300);
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 260);
   }, 2800);
 }
 
+/**
+ * 제목 글자를 하나씩 <span> 으로 나눠 차례로 올라오는 애니메이션을 씁니다.
+ * 단어는 줄바꿈 중간에 끊기지 않게 묶어둡니다. 화면 낭독기는 aria-label 을 읽어요.
+ */
+export function splitText(text, startIndex = 0) {
+  let i = startIndex;
+  const parts = [];
+  String(text)
+    .split(/(\s+)/)
+    .forEach((word) => {
+      if (!word) return;
+      if (/^\s+$/.test(word)) {
+        parts.push(' ');
+        return;
+      }
+      const w = h('span.w', { 'aria-hidden': 'true' });
+      for (const ch of word) w.append(h('span.ch', { style: { '--d': String(i++) } }, ch));
+      parts.push(w);
+    });
+  return parts;
+}
+
 export function spinner() {
-  return h('div.spinner', { role: 'status', 'aria-label': '불러오는 중' });
+  return h('div.spinner', { role: 'status', 'aria-label': t('loading') });
 }
 
 export function fmtDate(iso) {
   const d = new Date(iso);
-  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString(locale(), { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export function fmtBytes(n) {

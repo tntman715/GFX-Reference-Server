@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { emptyState, ResultsGrid } from '../components.js';
 import { avatarSrc, clear, h, spinner } from '../dom.js';
+import { categoryLabel, t } from '../i18n.js';
 import { store } from '../store.js';
 
 export function mountProfile(root, params, { id }) {
@@ -21,28 +22,29 @@ export function mountProfile(root, params, { id }) {
         h(
           'div.profile-head',
           h('img.avatar.lg', { src: avatarSrc(p.user.avatarUrl), alt: '' }),
-          h(
-            'div',
-            { style: { flex: '1', minWidth: '200px' } },
-            h('h1', name),
-            h('div.muted', `@${p.user.username}`),
-          ),
-          s ? h('div', { style: { textAlign: 'right' } }, h('div', { style: { fontSize: '30px', fontWeight: 850 } }, `${s.score.toLocaleString()}점`), h('div.muted', `전체 ${s.rank}위`)) : null,
+          h('div.profile-name', h('span.handle', `@${p.user.username}`), h('h1', name)),
+          s
+            ? h(
+                'div.profile-score',
+                h('div.big', t('ranking.points', { n: s.score.toLocaleString() })),
+                h('div.muted', t('profile.rank', { r: s.rank })),
+              )
+            : null,
         ),
         h(
           'div.stats',
-          stat('업로드', s?.uploads ?? 0),
-          stat('받은 반응', s?.reactionsReceived ?? 0),
-          stat('보너스', s?.adjustments ?? 0),
-          stat('순위', s ? `${s.rank}위` : '—'),
+          stat('Uploads', s?.uploads ?? 0),
+          stat('Reactions', s?.reactionsReceived ?? 0),
+          stat('Bonus', s?.adjustments ?? 0),
+          stat('Rank', s ? t('profile.rankShort', { r: s.rank }) : '-'),
         ),
-        h('div.section-title', h('h2', '분류별 업로드')),
+        h('div.section-title', h('h2', 'By category')),
         h(
           'div.bars',
           (store.meta?.categories ?? []).map((c) =>
             h(
               'div.bar',
-              h('span', `${c.emoji} ${c.label}`),
+              h('span', categoryLabel(c)),
               h('div.track', h('div.fill', { style: { width: `${((counts[c.key] ?? 0) / max) * 100}%` } })),
               h('b', String(counts[c.key] ?? 0)),
             ),
@@ -55,21 +57,19 @@ export function mountProfile(root, params, { id }) {
         const g = new ResultsGrid({
           minColWidth: 230,
           load: async () => ({ items, hasMore: false, total: items.length }),
-          empty: () => emptyState('🖼️', '아직 없어요.'),
+          empty: () => emptyState(t('profile.empty')),
         });
         grids.push(g);
         body.append(g.el);
       };
-      if (p.top.length) section('🔥 인기 레퍼런스', p.top);
+      if (p.top.length) section('Most loved', p.top);
       section(
-        '🆕 최근 올린 레퍼런스',
+        'Latest',
         p.recent,
-        p.recent.length
-          ? h('a.btn.sm', { href: `#/?uploader=${p.user.id}&uploaderName=${encodeURIComponent(name)}` }, '전체 보기 →')
-          : null,
+        p.recent.length ? h('a.btn.sm', { href: `#/?uploader=${p.user.id}&uploaderName=${encodeURIComponent(name)}` }, 'View all →') : null,
       );
     })
-    .catch((err) => clear(body).append(emptyState('😢', err.message)));
+    .catch((err) => clear(body).append(emptyState(err.message)));
 
   return { destroy: () => grids.forEach((g) => g.destroy()) };
 }

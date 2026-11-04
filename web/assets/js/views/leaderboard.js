@@ -1,21 +1,24 @@
 import { api } from '../api.js';
 import { emptyState } from '../components.js';
 import { avatarSrc, clear, h, spinner } from '../dom.js';
+import { t } from '../i18n.js';
+
+const pad = (n) => String(n).padStart(2, '0');
 
 export function mountLeaderboard(root, params, { navigate }) {
   let page = Math.max(1, Number(params.get('page')) || 1);
   const body = h('div', spinner());
   const rules = h('p', '');
-  root.append(h('div.page-head', h('div', h('h1', '🏆 기여 랭킹'), rules)), body);
+  root.append(h('div.page-head', h('div', h('h1', 'Ranking'), rules)), body);
 
   async function load() {
     clear(body).append(spinner());
     try {
       const data = await api.get('/api/leaderboard', { page, limit: 20 });
-      rules.textContent = `레퍼런스 업로드 +${data.scoring.pointsPerUpload}점 · 내 레퍼런스가 받은 반응 +${data.scoring.pointsPerReaction}점 (자기 반응 제외)`;
+      rules.textContent = t('ranking.rules', { u: data.scoring.pointsPerUpload, r: data.scoring.pointsPerReaction });
       clear(body);
       if (!data.rows.length) {
-        body.append(emptyState('🏆', '아직 랭킹이 없어요. 디스코드에서 /업로드 로 레퍼런스를 올려보세요!'));
+        body.append(emptyState(t('ranking.empty')));
         return;
       }
       let rows = data.rows;
@@ -30,11 +33,11 @@ export function mountLeaderboard(root, params, { navigate }) {
               h(
                 'a.p',
                 { class: r.rank === 1 ? 'first' : '', href: `#/user/${r.userId}` },
-                h('div.medal', r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉'),
+                h('div.place', pad(r.rank)),
                 h('img.avatar.lg', { src: avatarSrc(r.avatarUrl), alt: '' }),
                 h('div.name', r.displayName || r.username),
-                h('div.score', `${r.score.toLocaleString()}점`),
-                h('div.hint', `업로드 ${r.uploads} · 받은 반응 ${r.reactionsReceived}`),
+                h('div.score', t('ranking.points', { n: r.score.toLocaleString() })),
+                h('div.hint', t('ranking.detail', { u: r.uploads, r: r.reactionsReceived })),
               ),
             ),
           ),
@@ -48,12 +51,12 @@ export function mountLeaderboard(root, params, { navigate }) {
               'thead',
               h(
                 'tr',
-                h('th', '순위'),
-                h('th', '이름'),
-                h('th.num', '점수'),
-                h('th.num.hide-sm', '업로드'),
-                h('th.num.hide-sm', '받은 반응'),
-                h('th.num.hide-sm', '보너스'),
+                h('th', 'Rank'),
+                h('th', 'Name'),
+                h('th.num', 'Score'),
+                h('th.num.hide-sm', 'Uploads'),
+                h('th.num.hide-sm', 'Reactions'),
+                h('th.num.hide-sm', 'Bonus'),
               ),
             ),
             h(
@@ -62,12 +65,12 @@ export function mountLeaderboard(root, params, { navigate }) {
                 h(
                   'tr',
                   { onclick: () => navigate(`#/user/${r.userId}`) },
-                  h('td.rank-cell', String(r.rank)),
+                  h('td.rank-cell', pad(r.rank)),
                   h('td', h('div.who-cell', h('img.avatar', { src: avatarSrc(r.avatarUrl), alt: '' }), r.displayName || r.username)),
                   h('td.num', h('b', r.score.toLocaleString())),
                   h('td.num.hide-sm', String(r.uploads)),
                   h('td.num.hide-sm', String(r.reactionsReceived)),
-                  h('td.num.hide-sm', r.adjustments ? (r.adjustments > 0 ? `+${r.adjustments}` : String(r.adjustments)) : '—'),
+                  h('td.num.hide-sm', r.adjustments > 0 ? `+${r.adjustments}` : String(r.adjustments ?? 0)),
                 ),
               ),
             ),
@@ -79,14 +82,14 @@ export function mountLeaderboard(root, params, { navigate }) {
         body.append(
           h(
             'div.pager',
-            h('button.btn.sm', { disabled: page <= 1, onclick: () => go(page - 1) }, '◀ 이전'),
+            h('button.btn.sm', { disabled: page <= 1, onclick: () => go(page - 1) }, t('ranking.prev')),
             h('span.muted', `${page} / ${pages}`),
-            h('button.btn.sm', { disabled: page >= pages, onclick: () => go(page + 1) }, '다음 ▶'),
+            h('button.btn.sm', { disabled: page >= pages, onclick: () => go(page + 1) }, t('ranking.next')),
           ),
         );
       }
     } catch (err) {
-      clear(body).append(emptyState('⚠️', err.message));
+      clear(body).append(emptyState(err.message));
     }
   }
 

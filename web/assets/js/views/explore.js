@@ -1,9 +1,10 @@
 import { api } from '../api.js';
 import { emptyState, ResultsGrid } from '../components.js';
-import { clear, debounce, h } from '../dom.js';
+import { clear, debounce, h, splitText } from '../dom.js';
+import { categoryLabel, colorLabel, t } from '../i18n.js';
 import { store } from '../store.js';
 
-const SORT_LABELS = { newest: '최신순', popular: '인기순', oldest: '오래된순', random: '무작위' };
+const SORTS = ['newest', 'popular', 'oldest', 'random'];
 
 function fromParams(p) {
   return {
@@ -41,10 +42,10 @@ export function mountExplore(root, params) {
   // ── 검색창 ──
   const input = h('input', {
     type: 'search',
-    placeholder: '제목, 맵 이름, 제작자, 태그, #번호로 검색',
+    placeholder: t('explore.search'),
     value: state.q,
     autocomplete: 'off',
-    'aria-label': '검색',
+    'aria-label': t('explore.searchLabel'),
   });
   input.addEventListener(
     'input',
@@ -64,13 +65,13 @@ export function mountExplore(root, params) {
   const tagItems = h('div.items');
   const sortSelect = h(
     'select.select',
-    { 'aria-label': '정렬', onchange: () => set({ sort: sortSelect.value === 'newest' ? '' : sortSelect.value }) },
-    Object.entries(SORT_LABELS).map(([k, v]) => h('option', { value: k }, v)),
+    { 'aria-label': t('explore.sortLabel'), onchange: () => set({ sort: sortSelect.value === 'newest' ? '' : sortSelect.value }) },
+    SORTS.map((k) => h('option', { value: k }, t(`sort.${k}`))),
   );
   const picker = h('input', {
     type: 'color',
-    value: state.hex || '#8b6cff',
-    title: '원하는 색으로 찾기',
+    value: state.hex || '#ff7a1a',
+    title: t('explore.customColorTitle'),
     onchange: () => set({ hex: picker.value, color: '' }),
   });
 
@@ -79,36 +80,61 @@ export function mountExplore(root, params) {
   const resultsEl = h('div');
 
   const total = meta?.stats?.total ?? 0;
+
+  // ── 표지: 인기 레퍼런스 한 장을 배경으로 깔고 큰 워드마크 ──
+  const heroBg = h('div.hero-bg', { 'aria-hidden': 'true' });
+  const heroCover = h('div');
+  const banner = h(
+    'div.hero-banner',
+    heroBg,
+    h(
+      'div.hero-top',
+      h(
+        'div.hero-pills',
+        (meta?.categories ?? []).slice(0, 3).map((c) =>
+          h(
+            'button',
+            { type: 'button', title: t('explore.onlyCategory', { label: categoryLabel(c) }), onclick: () => set({ category: c.key }) },
+            categoryLabel(c, true),
+          ),
+        ),
+      ),
+      h('span.hero-vol', `Vol. ${String(total).padStart(3, '0')}`),
+    ),
+    h(
+      'div',
+      h('h1.split', { 'aria-label': 'GFX References' }, splitText('GFX References')),
+      h('div.hero-foot', h('p', t('explore.lead', { n: total.toLocaleString() })), heroCover),
+    ),
+  );
+  loadCover();
+
   root.append(
     h(
       'section.hero',
-      h(
-        'div',
-        h('h1', 'GFX ', h('span.grad', '레퍼런스'), ' 아카이브'),
-        h('p', `디스코드에 모인 ${total.toLocaleString()}개의 썸네일 · 작업물 레퍼런스를 찾아보세요.`),
-      ),
+      banner,
       h('div.searchbox', h('span.icon', { html: searchIcon() }), input, h('kbd', '/')),
       h(
         'div.filters',
-        h('div.filter-row', h('span.label', '분류'), h('div.items', catSeg)),
-        h('div.filter-row', h('span.label', '색상'), colorItems),
-        h('div.filter-row', h('span.label', '태그'), tagItems),
+        h('div.filter-row', h('span.label', 'Category'), h('div.items', catSeg)),
+        h('div.filter-row', h('span.label', 'Color'), colorItems),
+        h('div.filter-row', h('span.label', 'Tags'), tagItems),
       ),
     ),
-    h('div.results-head', h('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' } }, countEl, activeEl), sortSelect),
+    h('div.results-head', h('div.results-info', countEl, activeEl), sortSelect),
     resultsEl,
   );
 
   function renderControls() {
     clear(catSeg);
     const counts = meta?.stats?.categories ?? {};
-    catSeg.append(h('button', { class: state.category ? '' : 'on', onclick: () => set({ category: '' }) }, '전체'));
+    catSeg.append(h('button', { class: state.category ? '' : 'on', onclick: () => set({ category: '' }) }, t('all')));
     for (const c of meta?.categories ?? []) {
       catSeg.append(
         h(
           'button',
           { class: state.category === c.key ? 'on' : '', onclick: () => set({ category: state.category === c.key ? '' : c.key }) },
-          `${c.emoji} ${c.label} `,
+          `${categoryLabel(c)} `,
           h('span.faint', String(counts[c.key] ?? 0)),
         ),
       );
@@ -120,58 +146,91 @@ export function mountExplore(root, params) {
         h('button.swatch', {
           class: state.color === c.key ? 'on' : '',
           style: { background: c.hex },
-          title: c.label,
-          'aria-label': c.label,
+          title: colorLabel(c),
+          'aria-label': colorLabel(c),
           onclick: () => set({ color: state.color === c.key ? '' : c.key, hex: '' }),
         }),
       );
     }
     picker.value = state.hex || picker.value;
-    colorItems.append(h('span.color-picker', picker, h('span.hint', state.hex ? state.hex : '직접 선택')));
+    colorItems.append(h('span.color-picker', picker, h('span.hint', state.hex ? state.hex : t('explore.customColor'))));
 
     clear(tagItems);
-    for (const t of meta?.tags ?? []) {
-      const on = state.tags.includes(t.name);
+    for (const tag of meta?.tags ?? []) {
+      const on = state.tags.includes(tag.name);
       tagItems.append(
         h(
           'button.chip',
           {
             class: on ? 'on' : '',
-            title: t.description ?? '',
-            onclick: () => set({ tags: on ? state.tags.filter((x) => x !== t.name) : [...state.tags, t.name] }),
+            title: tag.description ?? '',
+            onclick: () => set({ tags: on ? state.tags.filter((x) => x !== tag.name) : [...state.tags, tag.name] }),
           },
-          `#${t.name}`,
-          h('span.count', String(t.count)),
+          `#${tag.name}`,
+          h('span.count', String(tag.count)),
         ),
       );
     }
 
     sortSelect.value = state.sort || 'newest';
     sortSelect.disabled = !!state.hex;
-    sortSelect.title = state.hex ? '색상 코드로 찾을 때는 색이 비슷한 순서로 보여줘요' : '';
+    sortSelect.title = state.hex ? t('explore.hexSort') : '';
     if (input.value.trim() !== state.q) input.value = state.q;
 
     clear(activeEl);
-    const chip = (label, clearPatch) => h('button.chip.on', { onclick: () => set(clearPatch), title: '필터 해제' }, label, ' ✕');
+    const chip = (label, clearPatch, dot) =>
+      h(
+        'button.chip.on',
+        { onclick: () => set(clearPatch), title: t('explore.removeFilter') },
+        dot ? h('span.dot', { style: { background: dot } }) : null,
+        label,
+        h('span.x', { 'aria-hidden': 'true' }, '×'),
+      );
     if (state.q) activeEl.append(chip(`"${state.q}"`, { q: '' }));
-    if (state.category) activeEl.append(chip(store.category(state.category)?.label ?? state.category, { category: '' }));
-    if (state.color) activeEl.append(chip(`🎨 ${store.color(state.color)?.label ?? state.color}`, { color: '' }));
-    if (state.hex) activeEl.append(chip(`🎨 ${state.hex}`, { hex: '' }));
-    for (const t of state.tags) activeEl.append(chip(`#${t}`, { tags: state.tags.filter((x) => x !== t) }));
-    if (state.creator) activeEl.append(chip(`제작자 ${state.creator}`, { creator: '' }));
-    if (state.uploader) activeEl.append(chip(`올린 사람 ${state.uploaderName || state.uploader}`, { uploader: '', uploaderName: '' }));
+    if (state.category) activeEl.append(chip(categoryLabel(store.category(state.category)) || state.category, { category: '' }));
+    if (state.color) {
+      const c = store.color(state.color);
+      activeEl.append(chip(colorLabel(c) || state.color, { color: '' }, c?.hex));
+    }
+    if (state.hex) activeEl.append(chip(state.hex, { hex: '' }, state.hex));
+    for (const tag of state.tags) activeEl.append(chip(`#${tag}`, { tags: state.tags.filter((x) => x !== tag) }));
+    if (state.creator) activeEl.append(chip(t('explore.creator', { name: state.creator }), { creator: '' }));
+    if (state.uploader) activeEl.append(chip(t('explore.uploader', { name: state.uploaderName || state.uploader }), { uploader: '', uploaderName: '' }));
     const any = state.q || state.category || state.color || state.hex || state.tags.length || state.creator || state.uploader;
     if (any) {
       activeEl.append(
-        h('button.btn.ghost.sm', { onclick: () => set({ q: '', category: '', color: '', hex: '', tags: [], creator: '', uploader: '', uploaderName: '' }) }, '모두 지우기'),
+        h(
+          'button.btn.ghost.sm',
+          { onclick: () => set({ q: '', category: '', color: '', hex: '', tags: [], creator: '', uploader: '', uploaderName: '' }) },
+          t('explore.clearAll'),
+        ),
       );
+    }
+  }
+
+  async function loadCover() {
+    try {
+      const { items } = await api.get('/api/refs', { sort: 'popular', period: 'all', page: 1, limit: 6 });
+      const pick = items[Math.floor(Math.random() * items.length)];
+      if (!pick) return;
+      const img = new Image();
+      img.onload = () => {
+        heroBg.style.backgroundImage = `url("${pick.preview.url}")`;
+        heroBg.classList.add('loaded');
+      };
+      img.src = pick.preview.url;
+      heroCover.replaceWith(
+        h('a.hero-cover', { href: `#/ref/${pick.id}` }, h('span.k', 'Cover'), `#${pick.id} ${pick.title} · ${pick.creator.name}`),
+      );
+    } catch {
+      /* 표지 사진은 없어도 괜찮아요 */
     }
   }
 
   function reload() {
     grid?.destroy();
     clear(resultsEl);
-    countEl.textContent = '검색 중…';
+    countEl.textContent = t('explore.searching');
     const s = { ...state };
     const seed = Math.random().toString(36).slice(2, 10);
     grid = new ResultsGrid({
@@ -191,13 +250,9 @@ export function mountExplore(root, params) {
           limit: 30,
         }),
       onTotal: (n) => {
-        countEl.textContent = `${n.toLocaleString()}개의 레퍼런스`;
+        countEl.textContent = t(n === 1 ? 'explore.countOne' : 'explore.count', { n: n.toLocaleString() });
       },
-      empty: () =>
-        emptyState(
-          '🔍',
-          total ? '조건에 맞는 레퍼런스가 없어요.' : '아직 등록된 레퍼런스가 없어요. 디스코드에서 /업로드 로 첫 레퍼런스를 올려보세요!',
-        ),
+      empty: () => emptyState(total ? t('explore.noMatch') : t('explore.noRefs')),
     });
     resultsEl.append(grid.el);
   }

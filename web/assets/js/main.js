@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { discordIcon, handleApiError, openLogin } from './components.js';
-import { avatarSrc, clear, h, spinner, toast } from './dom.js';
+import { avatarSrc, clear, h, spinner, splitText, toast } from './dom.js';
+import { applyStatic, getLang, onLangChange, setLang, t } from './i18n.js';
 import { store } from './store.js';
 import { mountColors } from './views/colors.js';
 import { openDetail } from './views/detail.js';
@@ -15,10 +16,14 @@ let detail = null; // { id, overlay }
 let baseHash = '#/';
 let enteredDetailFromSite = false;
 
-function parseHash() {
-  const raw = window.location.hash.replace(/^#/, '') || '/';
+function parseHashString(hash) {
+  const raw = hash.replace(/^#/, '') || '/';
   const [path, query = ''] = raw.split('?');
   return { path: path || '/', params: new URLSearchParams(query) };
+}
+
+function parseHash() {
+  return parseHashString(window.location.hash);
 }
 
 function navigate(hash) {
@@ -46,6 +51,10 @@ function mountBase(path, params) {
     window.scrollTo(0, 0);
     document.title = 'GFX References';
     current = { key: v.key, view: v.mount(app, params, { navigate, ...(v.extra ?? {}) }) };
+    // 화면이 바뀔 때 살짝 떠오르는 전환 효과
+    app.classList.remove('page-enter');
+    void app.offsetWidth;
+    app.classList.add('page-enter');
   }
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('active', a.dataset.route === (v.nav ?? v.key));
 }
@@ -54,7 +63,7 @@ function route() {
   const { path, params } = parseHash();
 
   if (path === '/login-error') {
-    toast(params.get('msg') || '로그인하지 못했어요.', 'error');
+    toast(params.get('msg') || t('login.failed'), 'error');
     history.replaceState(null, '', '#/');
     return route();
   }
@@ -102,30 +111,31 @@ function renderAccount() {
   clear(root);
   const me = store.me;
   if (!me) {
-    root.append(h('button.btn.discord.sm', { onclick: () => openLogin(), 'aria-label': '로그인' }, discordIcon(), h('span.label', '로그인')));
+    root.append(
+      h('button.btn.discord.sm', { onclick: () => openLogin(), 'aria-label': t('account.login') }, discordIcon(), h('span.label', t('account.login'))),
+    );
     return;
   }
   const menu = h(
     'div.menu',
-    h('div.menu-head', `${me.displayName || me.username} 님`),
-    h('a', { href: `#/user/${me.id}`, onclick: () => menu.classList.remove('open') }, '👤 내 프로필'),
+    h('div.menu-head', t('account.hello', { name: me.displayName || me.username })),
+    h('a', { href: `#/user/${me.id}`, onclick: () => menu.classList.remove('open') }, t('account.profile')),
     h(
       'button',
       {
         onclick: async () => {
           await api.post('/api/auth/logout').catch(() => undefined);
           store.setMe(null);
-          toast('로그아웃했어요');
+          toast(t('account.loggedOut'));
         },
       },
-      '🚪 로그아웃',
+      t('account.logout'),
     ),
   );
   const btn = h(
-    'button',
+    'button.account-btn',
     {
-      style: { background: 'none', border: 0, padding: 0, cursor: 'pointer' },
-      'aria-label': '계정 메뉴',
+      'aria-label': t('account.menu'),
       onclick: (e) => {
         e.stopPropagation();
         menu.classList.toggle('open');
@@ -143,34 +153,117 @@ function renderStatus() {
   const el = document.getElementById('bot-status');
   const online = !!meta?.bot?.online;
   el.className = `bot-status ${online ? 'online' : 'offline'}`;
-  el.querySelector('span').textContent = online ? '봇 온라인' : '봇 오프라인';
-  el.title = online ? `디스코드 봇이 연결되어 있어요${meta.guild?.guildName ? ` (${meta.guild.guildName})` : ''}` : '디스코드 봇이 오프라인이에요';
+  el.querySelector('span').textContent = online ? t('bot.online') : t('bot.offline');
+  el.title = online ? `${t('bot.onlineTitle')}${meta.guild?.guildName ? ` (${meta.guild.guildName})` : ''}` : t('bot.offlineTitle');
 
   const banner = document.getElementById('banner');
   clear(banner);
   if (meta && !meta.archive?.available) {
     banner.className = 'banner';
-    banner.append(h('div', '⚠️ 디스코드 봇이 오프라인이라 원본 다운로드가 잠시 안 돼요. 검색과 미리보기는 계속 사용할 수 있어요.'));
+    banner.append(h('div', t('banner.offline')));
   }
 }
 
-document.getElementById('random-btn').addEventListener('click', async () => {
+async function openRandom() {
   try {
     const { item } = await api.get('/api/refs/random');
     navigate(`#/ref/${item.id}`);
   } catch (err) {
     handleApiError(err);
   }
+}
+for (const btn of document.querySelectorAll('[data-random]')) btn.addEventListener('click', openRandom);
+
+// ── 언어 ───────────────────────────────────────────────
+
+function renderLangSwitch() {
+  for (const b of document.querySelectorAll('#lang-switch [data-lang]')) {
+    const on = b.dataset.lang === getLang();
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+document.getElementById('lang-switch').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lang]');
+  if (b) setLang(b.dataset.lang);
 });
+
+/** 언어를 바꾸면 지금 화면을 새 언어로 다시 그림 (주소는 그대로) */
+function rerender() {
+  applyStatic();
+  renderLangSwitch();
+  if (!store.meta) return;
+  renderAccount();
+  renderStatus();
+  if (!current.key) return;
+  const openId = detail?.id ?? null;
+  if (detail) {
+    const old = detail;
+    detail = null;
+    old.overlay.close();
+  }
+  const base = openId !== null ? parseHashString(baseHash) : parseHash();
+  current.view?.destroy?.();
+  current = { key: null, view: null };
+  mountBase(base.path, base.params);
+  if (openId !== null) route();
+}
+onLangChange(rerender);
+
+// ── 모바일: 아래로 스크롤하면 상단 바를 숨기고, 위로 올리면 다시 보여줌 ──
+
+let lastScrollY = window.scrollY;
+window.addEventListener(
+  'scroll',
+  () => {
+    const y = window.scrollY;
+    if (Math.abs(y - lastScrollY) < 8) return;
+    document.body.classList.toggle('nav-hidden', y > lastScrollY && y > 160);
+    lastScrollY = y;
+  },
+  { passive: true },
+);
+
+// ── 바닥 워드마크: 화면에 들어오면 글자가 차례로 올라옴 ──────────
+
+function setupFooter() {
+  const footer = document.getElementById('footer');
+  for (const el of footer.querySelectorAll('[data-split]')) {
+    const lines = el.innerHTML.split(/<br\s*\/?>/i).map((s) => s.trim());
+    clear(el);
+    let i = 0;
+    lines.forEach((line, n) => {
+      if (n) el.append(h('br'));
+      el.append(...splitText(line, i));
+      i += line.length;
+    });
+  }
+  if (!('IntersectionObserver' in window)) {
+    footer.classList.add('in');
+    return;
+  }
+  const io = new IntersectionObserver(
+    (entries) => {
+      // 볼 때마다 다시 재생되도록 화면 밖으로 나가면 원래대로
+      for (const e of entries) footer.classList.toggle('in', e.isIntersecting);
+    },
+    { threshold: 0.25 },
+  );
+  io.observe(footer.querySelector('.footer-bottom'));
+}
 
 // ── 시작 ───────────────────────────────────────────────
 
 async function start() {
+  applyStatic();
+  renderLangSwitch();
+  setupFooter();
   app.append(spinner());
   try {
     await store.init();
   } catch (err) {
-    clear(app).append(h('div.empty', h('div.big', '🔌'), '서버에 연결할 수 없어요. 잠시 후 새로고침해 주세요.', h('div.hint', err.message)));
+    clear(app).append(h('div.empty', h('div', t('start.failed')), h('div.hint', err.message)));
     return;
   }
   clear(app);

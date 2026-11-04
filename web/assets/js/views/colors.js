@@ -1,14 +1,14 @@
 import { api } from '../api.js';
 import { emptyState, ResultsGrid } from '../components.js';
 import { clear, h, spinner } from '../dom.js';
-import { store } from '../store.js';
+import { colorLabel, colorNameEn, t } from '../i18n.js';
 
 export function mountColors(root, params) {
   const state = { color: params.get('color') || '', hex: params.get('hex') || '' };
   let grid = null;
   const tiles = h('div.color-tiles', spinner());
-  const picker = h('input', { type: 'color', value: state.hex || '#ff3b6b', 'aria-label': '색 선택' });
-  const text = h('input.text-input', { type: 'text', value: state.hex || '', placeholder: '#ff3b6b', maxlength: 7, 'aria-label': '색상 코드' });
+  const picker = h('input', { type: 'color', value: state.hex || '#ff3b6b', 'aria-label': t('colors.pick') });
+  const text = h('input.text-input', { type: 'text', value: state.hex || '', placeholder: '#ff3b6b', maxlength: 7, 'aria-label': t('colors.code') });
   const title = h('h2', '');
   const results = h('div');
 
@@ -22,14 +22,14 @@ export function mountColors(root, params) {
   });
 
   root.append(
-    h('div.page-head', h('div', h('h1', '🎨 색상으로 찾기'), h('p', '대표 색 계열로 모아보거나, 원하는 색을 골라 그 색이 들어간 레퍼런스를 찾을 수 있어요.'))),
+    h('div.page-head', h('div', h('h1', 'Colors'), h('p', t('colors.lead')))),
     tiles,
     h(
       'div.hex-search',
       picker,
-      h('div', { style: { flex: '1', minWidth: '200px' } }, h('b', '원하는 색으로 찾기'), h('div.hint', '색을 고르거나 코드를 입력하고 Enter')),
+      h('div.hex-text', h('b', 'Custom color'), h('div.hint', t('colors.hint'))),
       text,
-      h('button.btn', { onclick: () => text.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) }, '찾기'),
+      h('button.btn', { onclick: () => text.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) }, t('colors.search')),
     ),
     h('div.section-title', title),
     results,
@@ -43,14 +43,14 @@ export function mountColors(root, params) {
           'button.color-tile',
           { class: state.color === c.key ? 'on' : '', dataset: { key: c.key }, onclick: () => set({ color: c.key, hex: '' }) },
           h('div.sw', { style: { background: c.hex } }),
-          h('div.info', h('b', c.label), h('span.faint', `${c.count}개`)),
+          h('div.info', h('b', colorLabel(c)), h('span.faint', t('colors.count', { n: c.count }))),
         ),
       );
     }
   });
 
   function render() {
-    for (const t of tiles.querySelectorAll('.color-tile')) t.classList.toggle('on', t.dataset.key === state.color);
+    for (const tile of tiles.querySelectorAll('.color-tile')) tile.classList.toggle('on', tile.dataset.key === state.color);
     if (state.hex) {
       picker.value = state.hex.length === 4 ? `#${[...state.hex.slice(1)].map((c) => c + c).join('')}` : state.hex;
       text.value = state.hex;
@@ -59,15 +59,15 @@ export function mountColors(root, params) {
     clear(results);
     if (!state.color && !state.hex) {
       title.textContent = '';
-      results.append(emptyState('🎨', '위에서 색 계열을 고르거나 원하는 색을 선택해 보세요.'));
+      results.append(emptyState(t('colors.choose')));
       return;
     }
-    title.textContent = state.hex ? `${state.hex} 이(가) 들어간 레퍼런스` : '';
-    if (state.color) title.textContent = `${store.color(state.color)?.label ?? state.color} 계열 레퍼런스`;
+    // 섹션 제목은 두 언어 모두 영어
+    title.textContent = state.color ? colorNameEn(state.color) : state.hex;
     const s = { ...state };
     grid = new ResultsGrid({
       load: (page) => api.get('/api/refs', s.hex ? { hex: s.hex, page, limit: 30 } : { color: s.color, sort: 'color', page, limit: 30 }),
-      empty: () => emptyState('🎨', '이 색이 들어간 레퍼런스가 없어요.'),
+      empty: () => emptyState(t('colors.empty')),
     });
     results.append(grid.el);
   }

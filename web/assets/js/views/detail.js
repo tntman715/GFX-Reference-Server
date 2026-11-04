@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { emptyState, handleApiError, openOverlay, paletteBar, requireLogin, ResultsGrid } from '../components.js';
 import { clear, copyText, fmtBytes, fmtDate, h, spinner, toast } from '../dom.js';
+import { categoryLabel, t } from '../i18n.js';
 import { store } from '../store.js';
 
 /** 레퍼런스 상세 (오버레이) */
@@ -24,12 +25,12 @@ export function openDetail(id, { onClose, navigate }) {
     .get(`/api/refs/${id}`)
     .then(({ item }) => render(item))
     .catch((err) => {
-      clear(body).append(h('div', { style: { padding: '40px' } }, emptyState('😢', err.message)));
+      clear(body).append(h('div', { style: { padding: '40px' } }, emptyState(err.message)));
     });
 
   function render(ref) {
     const meta = store.meta;
-    const cat = store.category(ref.category);
+    const cat = store.category(ref.category) ?? { key: ref.category, label: ref.categoryLabel };
     const archiveOk = meta?.archive?.available;
     document.title = `#${ref.id} ${ref.title} · GFX References`;
 
@@ -43,9 +44,9 @@ export function openDetail(id, { onClose, navigate }) {
           'button.react-btn',
           {
             class: [mine.has(e) ? 'on' : '', popEmoji === e ? 'pop' : ''].join(' '),
-            title: mine.has(e) ? '반응 취소' : '반응 남기기',
+            title: mine.has(e) ? t('detail.unreact') : t('detail.react'),
             onclick: async () => {
-              if (!requireLogin('반응을 남기려면 디스코드로 로그인해 주세요.')) return;
+              if (!requireLogin(t('detail.loginToReact'))) return;
               btn.disabled = true;
               try {
                 const res = await api.post(`/api/refs/${ref.id}/reactions`, { emoji: e });
@@ -71,13 +72,13 @@ export function openDetail(id, { onClose, navigate }) {
       {
         disabled: !archiveOk,
         onclick: async () => {
-          if (!requireLogin('원본은 디스코드 로그인 후 받을 수 있어요.')) return;
+          if (!requireLogin(t('detail.loginToDownload'))) return;
           dlBtn.disabled = true;
           const label = dlBtn.textContent;
-          dlBtn.textContent = '디스코드에서 가져오는 중…';
+          dlBtn.textContent = t('detail.downloading');
           try {
             const name = await api.download(ref.id);
-            toast(`⬇️ ${name}`, 'ok');
+            toast(t('detail.downloaded', { name }), 'ok');
           } catch (err) {
             handleApiError(err);
           } finally {
@@ -86,18 +87,18 @@ export function openDetail(id, { onClose, navigate }) {
           }
         },
       },
-      '⬇️ 원본 다운로드',
+      t('detail.download'),
     );
     const dmBtn = h(
       'button.btn',
       {
         disabled: !meta?.bot?.online,
         onclick: async () => {
-          if (!requireLogin('디스코드 DM으로 받으려면 로그인해 주세요.')) return;
+          if (!requireLogin(t('detail.loginToDm'))) return;
           dmBtn.disabled = true;
           try {
             await api.post(`/api/refs/${ref.id}/dm`);
-            toast('📨 디스코드 DM으로 원본을 보냈어요!', 'ok');
+            toast(t('detail.dmSent'), 'ok');
           } catch (err) {
             handleApiError(err);
           } finally {
@@ -105,29 +106,30 @@ export function openDetail(id, { onClose, navigate }) {
           }
         },
       },
-      '📨 디스코드 DM으로 받기',
+      t('detail.dm'),
     );
 
+    // 항목 이름(Category, Map …)은 두 언어 모두 영어
     const similarEl = h('div');
     const kv = h('dl.kv');
     const row = (k, v) => kv.append(h('dt', k), h('dd', v));
-    row('분류', `${cat?.emoji ?? ''} ${ref.categoryLabel}`);
-    if (ref.mapName) row('맵', ref.mapName);
+    row('Category', categoryLabel(cat));
+    if (ref.mapName) row('Map', ref.mapName);
     row(
-      '제작자',
-      h('a.user-link', { href: `#/?creator=${encodeURIComponent(ref.creator.name)}`, title: '이 제작자의 레퍼런스 보기' }, ref.creator.name),
+      'Creator',
+      h('a.user-link', { href: `#/?creator=${encodeURIComponent(ref.creator.name)}`, title: t('detail.moreByCreator') }, ref.creator.name),
     );
     row(
-      '올린 사람',
+      'Uploader',
       h(
         'a.user-link',
         { href: `#/user/${ref.uploader.id}` },
         ref.uploader.avatarUrl ? h('img', { src: ref.uploader.avatarUrl, alt: '' }) : null,
-        ref.uploader.name ?? '알 수 없음',
+        ref.uploader.name ?? t('detail.unknown'),
       ),
     );
-    row('올린 날', fmtDate(ref.createdAt));
-    row('원본', `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}`);
+    row('Uploaded', fmtDate(ref.createdAt));
+    row('Original', `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}`);
 
     clear(body).append(
       h(
@@ -139,21 +141,21 @@ export function openDetail(id, { onClose, navigate }) {
         ),
         h(
           'div.detail-info',
-          h('h2', h('span.id', `#${ref.id} `), ref.title),
+          h('h2', h('span.id', `#${ref.id}`), ref.title),
           kv,
           h(
             'div',
-            h('div.hint', { style: { marginBottom: '8px' } }, '태그'),
+            h('div.field-label', 'Tags'),
             ref.tags.length
               ? h(
                   'div.tag-list',
-                  ref.tags.map((t) => h('button.chip', { onclick: () => go(`#/?tags=${encodeURIComponent(t)}`) }, `#${t}`)),
+                  ref.tags.map((tag) => h('button.chip', { onclick: () => go(`#/?tags=${encodeURIComponent(tag)}`) }, `#${tag}`)),
                 )
-              : h('span.faint', '태그 없음'),
+              : h('span.faint', t('detail.noTags')),
           ),
           h(
             'div',
-            h('div.hint', { style: { marginBottom: '8px' } }, '팔레트 · 누르면 이 색으로 검색 (길게 누르면 복사)'),
+            h('div.field-label', 'Palette', h('span.faint', t('detail.paletteHint'))),
             h(
               'div.palette',
               ref.palette.map((p) =>
@@ -164,7 +166,7 @@ export function openDetail(id, { onClose, navigate }) {
                     onclick: () => go(`#/colors?hex=${encodeURIComponent(p.hex)}`),
                     oncontextmenu: async (e) => {
                       e.preventDefault();
-                      if (await copyText(p.hex)) toast(`${p.hex} 복사했어요`, 'ok');
+                      if (await copyText(p.hex)) toast(t('detail.hexCopied', { hex: p.hex }), 'ok');
                     },
                   },
                   h('span.sw', { style: { background: p.hex } }),
@@ -173,7 +175,7 @@ export function openDetail(id, { onClose, navigate }) {
               ),
             ),
           ),
-          h('div', h('div.hint', { style: { marginBottom: '8px' } }, '반응'), reactions),
+          h('div', h('div.field-label', 'Reactions'), reactions),
           h(
             'div.actions',
             dlBtn,
@@ -184,29 +186,24 @@ export function openDetail(id, { onClose, navigate }) {
                 'button.btn.sm',
                 {
                   onclick: async () => {
-                    if (await copyText(ref.siteUrl)) toast('링크를 복사했어요', 'ok');
+                    if (await copyText(ref.siteUrl)) toast(t('detail.linkCopied'), 'ok');
                   },
                 },
-                '🔗 링크 복사',
+                t('detail.copyLink'),
               ),
-              h('button.btn.sm', { onclick: () => similarEl.scrollIntoView({ behavior: 'smooth' }) }, '🎨 비슷한 색감'),
+              h('button.btn.sm', { onclick: () => similarEl.scrollIntoView({ behavior: 'smooth' }) }, t('detail.similar')),
             ),
-            h(
-              'p.hint',
-              archiveOk
-                ? '원본은 GFX References 디스코드 아카이브에서 바로 가져와요.'
-                : '디스코드 봇이 오프라인이라 지금은 원본을 받을 수 없어요.',
-            ),
+            h('p.hint', archiveOk ? t('detail.archiveOk') : t('detail.archiveOff')),
           ),
         ),
       ),
-      h('div.detail-similar', h('div.section-title', h('h2', '🎨 비슷한 색감의 레퍼런스')), similarEl),
+      h('div.detail-similar', h('div.section-title', h('h2', 'Similar colors')), similarEl),
     );
 
     similarGrid = new ResultsGrid({
       minColWidth: 200,
       load: (page) => api.get('/api/refs', { similar: ref.id, page, limit: 12 }),
-      empty: () => emptyState('🎨', '색감이 비슷한 레퍼런스가 아직 없어요.'),
+      empty: () => emptyState(t('detail.similarEmpty')),
     });
     similarEl.append(similarGrid.el);
   }

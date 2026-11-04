@@ -1,5 +1,6 @@
 import { api, ApiError } from './api.js';
 import { clear, copyText, h, spinner, toast } from './dom.js';
+import { categoryLabel, t } from './i18n.js';
 import { store } from './store.js';
 
 // ── 카드 ───────────────────────────────────────────────
@@ -11,27 +12,37 @@ export function paletteBar(palette, height) {
   return bar;
 }
 
+const STAR_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
+
 export function refCard(ref, { rank } = {}) {
-  const cat = store.category(ref.category);
+  const categories = store.meta?.categories ?? [];
+  const catIndex = categories.findIndex((c) => c.key === ref.category);
+  const cat = categories[catIndex] ?? { key: ref.category, label: ref.categoryLabel };
   const img = h('img', {
     src: ref.preview.url,
-    alt: `${ref.title} — ${ref.creator.name}`,
+    alt: `${ref.title}, ${ref.creator.name}`,
     loading: 'lazy',
     decoding: 'async',
     width: ref.preview.width,
     height: ref.preview.height,
   });
-  img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
-  if (img.complete) img.classList.add('loaded');
+  // 다 불러오면 이미지를 보여주고 자리 표시(반짝임)를 멈춤. 실패해도 반짝임은 멈춤
+  const markLoaded = () => {
+    img.classList.add('loaded');
+    img.parentElement?.classList.add('ready');
+  };
+  img.addEventListener('load', markLoaded, { once: true });
+  img.addEventListener('error', () => img.parentElement?.classList.add('ready'), { once: true });
   const reactLabel = rank !== undefined && ref.periodReactions !== undefined ? ref.periodReactions : ref.reactionTotal;
-  return h(
+  const card = h(
     'a.card',
-    { href: `#/ref/${ref.id}`, title: ref.title },
+    { href: `#/ref/${ref.id}`, title: ref.title, style: { '--c': ref.palette[0]?.hex ?? '#ff7a1a' } },
     h(
       'div.card-media',
       { style: { aspectRatio: `${ref.preview.width} / ${ref.preview.height}`, background: ref.palette[0]?.hex ?? '#111' } },
       img,
-      h('span.card-badge', `${cat?.emoji ?? ''} ${cat?.shortLabel ?? ref.categoryLabel}`),
+      h('span.card-badge', { class: catIndex >= 0 ? `c${catIndex % 3}` : '' }, categoryLabel(cat, true)),
       rank !== undefined ? h('span.card-rank', { class: rank <= 3 ? `r${rank}` : '' }, String(rank)) : null,
     ),
     paletteBar(ref.palette),
@@ -41,10 +52,12 @@ export function refCard(ref, { rank } = {}) {
       h(
         'div.card-meta',
         h('span.who', ref.mapName && ref.mapName !== ref.title ? `${ref.mapName} · ${ref.creator.name}` : ref.creator.name),
-        h('span.react', `${store.meta?.reactions?.[0] ?? '⭐'} ${reactLabel}`),
+        h('span.react', h('span', { html: STAR_ICON }), String(reactLabel)),
       ),
     ),
   );
+  if (img.complete) markLoaded();
+  return card;
 }
 
 // ── 메이슨리 그리드 + 무한 스크롤 ─────────────────────────
@@ -81,12 +94,34 @@ export class ResultsGrid {
       if (entries.some((e) => e.isIntersecting)) this.next();
     }, { rootMargin: '800px 0px' });
     this.io.observe(this.footer);
+    // 카드가 화면에 들어오면 'in' 을 붙여 차례로 떠오르게 함 (styles.css 의 .card.in)
+    this.revealIO =
+      'IntersectionObserver' in window
+        ? new IntersectionObserver(
+            (entries) => {
+              const shown = entries.filter((e) => e.isIntersecting);
+              shown.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top || a.boundingClientRect.left - b.boundingClientRect.left);
+              shown.forEach((e, k) => {
+                e.target.style.setProperty('--i', String(Math.min(k, 10)));
+                e.target.classList.add('in');
+                this.revealIO.unobserve(e.target);
+              });
+            },
+            { rootMargin: '0px 0px -24px 0px' },
+          )
+        : null;
     this.next();
+  }
+
+  reveal(el) {
+    if (this.revealIO) this.revealIO.observe(el);
+    else el.classList.add('in');
   }
 
   destroy() {
     this.resizeObserver.disconnect();
     this.io.disconnect();
+    this.revealIO?.disconnect();
     this.token++;
   }
 
@@ -105,7 +140,11 @@ export class ResultsGrid {
   }
 
   place(it) {
-    if (!this.cols.length) this.relayout();
+    // 열이 아직 없으면 relayout 이 이 카드까지 모두 배치함 (예전엔 첫 카드가 한 번 더 옮겨져 1번이 둘째 칸에 갔음)
+    if (!this.cols.length) {
+      this.relayout();
+      return;
+    }
     let idx = 0;
     for (let i = 1; i < this.heights.length; i++) if (this.heights[i] < this.heights[idx] - 0.01) idx = i;
     this.cols[idx].append(it.el);
@@ -128,13 +167,16 @@ export class ResultsGrid {
         const it = { el: refCard(ref, this.ranked ? { rank: start + i + 1 } : {}), ratio: ref.preview.height / ref.preview.width };
         this.items.push(it);
         this.place(it);
+        this.reveal(it.el);
       });
       clear(this.footer);
       if (!this.items.length && this.emptyContent) this.footer.append(this.emptyContent());
-      else if (this.hasMore) this.footer.append(h('button.btn', { onclick: () => this.next() }, '더 보기'));
+      else if (this.hasMore) {
+        this.footer.append(h('button.btn.view-all', { onclick: () => this.next() }, h('em', 'View more'), h('span.arrow', { 'aria-hidden': 'true' }, '↓')));
+      }
     } catch (err) {
       if (token !== this.token) return;
-      clear(this.footer).append(h('div.empty', h('div.big', '⚠️'), err.message || '불러오지 못했어요.'));
+      clear(this.footer).append(emptyState(err.message || t('grid.error')));
       this.hasMore = false;
     } finally {
       this.loading = false;
@@ -142,8 +184,8 @@ export class ResultsGrid {
   }
 }
 
-export function emptyState(emoji, text, extra) {
-  return h('div.empty', h('div.big', emoji), h('div', text), extra ?? null);
+export function emptyState(text, extra) {
+  return h('div.empty', h('div', text), extra ?? null);
 }
 
 // ── 오버레이 ───────────────────────────────────────────
@@ -156,19 +198,27 @@ export function openOverlay(content, { onClose, small = false } = {}) {
   const close = () => {
     if (closed) return;
     closed = true;
-    overlay.remove();
     document.removeEventListener('keydown', onKey);
-    if (!root.children.length) document.body.style.overflow = '';
+    // 닫힘 애니메이션이 끝난 뒤 지움
+    overlay.classList.add('closing');
+    const remove = () => {
+      overlay.remove();
+      if (!root.querySelector('.overlay:not(.closing)')) document.body.style.overflow = '';
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove();
+    else setTimeout(remove, 200);
     onClose?.();
   };
   const onKey = (e) => {
-    if (e.key === 'Escape' && root.lastElementChild === overlay) close();
+    if (e.key !== 'Escape') return;
+    const open = root.querySelectorAll('.overlay:not(.closing)');
+    if (open[open.length - 1] === overlay) close();
   };
   overlay.addEventListener('mousedown', (e) => {
     if (e.target === overlay) close();
   });
   document.addEventListener('keydown', onKey);
-  sheet.append(h('button.close-btn', { onclick: close, 'aria-label': '닫기' }, '×'));
+  sheet.append(h('button.close-btn', { onclick: close, 'aria-label': t('close') }, '×'));
   sheet.append(typeof content === 'function' ? content(close) : content);
   root.append(overlay);
   document.body.style.overflow = 'hidden';
@@ -188,28 +238,21 @@ export function openLogin(reason) {
   let polling = null;
   const { close } = openOverlay(
     (close) => {
-      const body = h('div');
+      const body = h('div.login-body');
       const codeArea = h('div');
-      body.append(
-        h('h2', { style: { fontSize: '22px' } }, '디스코드로 로그인'),
-        h(
-          'p.muted',
-          { style: { margin: '6px 0 18px' } },
-          reason || '원본 다운로드와 반응은 GFX References 디스코드 서버 멤버만 사용할 수 있어요.',
-        ),
-      );
+      body.append(h('h2', 'Log in'), h('p.muted', reason || t('login.reason')));
       if (meta?.auth?.oauth) {
         body.append(
           h(
             'a.btn.discord.block',
             { href: api.loginUrl(window.location.hash ? `/${window.location.hash}` : '/') },
             discordIcon(),
-            'Discord 계정으로 로그인',
+            t('login.oauth'),
           ),
         );
       }
       if (meta?.auth?.deviceCode) {
-        if (meta?.auth?.oauth) body.append(h('div.divider', '또는'));
+        if (meta?.auth?.oauth) body.append(h('div.divider', t('login.or')));
         const btn = h(
           'button.btn.block',
           {
@@ -225,17 +268,17 @@ export function openLogin(reason) {
               }
             },
           },
-          '🔑 디스코드 명령어 코드로 로그인',
+          t('login.device'),
         );
         body.append(btn, codeArea);
       }
       if (!meta?.auth?.oauth && !meta?.auth?.deviceCode) {
-        body.append(h('div.empty', '지금은 로그인할 수 없어요. 디스코드 봇이 오프라인이에요.'));
+        body.append(h('div.empty', t('login.unavailable')));
       }
 
       function showCode(res) {
         clear(codeArea).append(
-          h('p.muted', { style: { margin: '14px 0 0' } }, '디스코드 아무 채널에서 아래 명령어를 입력하세요:'),
+          h('p.muted', { style: { margin: '14px 0 0' } }, t('login.typeCommand')),
           h('div.login-code', res.userCode),
           h(
             'div.command-box',
@@ -244,19 +287,19 @@ export function openLogin(reason) {
               'button.btn.sm',
               {
                 onclick: async () => {
-                  if (await copyText(res.command)) toast('복사했어요!', 'ok');
+                  if (await copyText(res.command)) toast(t('copied'), 'ok');
                 },
               },
-              '복사',
+              t('copy'),
             ),
           ),
-          h('p.hint', { style: { marginTop: '10px' } }, '⏳ 승인을 기다리는 중… (10분 안에 입력해 주세요)'),
+          h('p.hint', { style: { marginTop: '10px' } }, t('login.waiting')),
         );
         const started = Date.now();
         polling = setInterval(async () => {
           if (Date.now() - started > 10 * 60_000) {
             clearInterval(polling);
-            clear(codeArea).append(h('p.muted', '코드가 만료되었어요. 다시 시도해 주세요.'));
+            clear(codeArea).append(h('p.muted', t('login.expired')));
             return;
           }
           try {
@@ -264,11 +307,11 @@ export function openLogin(reason) {
             if (r.status === 'approved') {
               clearInterval(polling);
               store.setMe(r.user);
-              toast(`${r.user?.displayName ?? r.user?.username ?? ''}님, 로그인했어요!`, 'ok');
+              toast(t('login.done', { name: r.user?.displayName ?? r.user?.username ?? '' }), 'ok');
               close();
             } else if (r.status !== 'pending') {
               clearInterval(polling);
-              clear(codeArea).append(h('p.muted', '코드가 만료되었어요. 다시 시도해 주세요.'));
+              clear(codeArea).append(h('p.muted', t('login.expired')));
             }
           } catch {
             /* 다음 주기에 다시 */
@@ -297,5 +340,5 @@ export function handleApiError(err) {
     openLogin();
     return;
   }
-  toast(err.message || '오류가 발생했어요.', 'error');
+  toast(err.message || t('error.generic'), 'error');
 }

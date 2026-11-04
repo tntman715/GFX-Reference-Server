@@ -44,6 +44,8 @@ const EnvSchema = z.object({
 
   // ── 디스코드 ────────────────────────────────────────────
   BOT_ENABLED: bool(true),
+  /** 메모리가 1GB 정도인 작은 서버: 이미지 처리를 한 번에 하나씩, 임시 보관(캐시)을 작게 */
+  LOW_MEMORY: bool(false),
   DISCORD_TOKEN: optionalString,
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_CLIENT_SECRET: optionalString,
@@ -137,6 +139,8 @@ export interface Config {
     publicBaseUrl?: string;
   };
   archiveDriver: 'discord' | 'local';
+  /** 작은 서버용 절약 모드 (LOW_MEMORY) */
+  lowMemory: boolean;
   upload: {
     maxBytes: number;
     previewMaxSize: number;
@@ -265,6 +269,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       publicBaseUrl: e.PREVIEW_PUBLIC_BASE_URL?.replace(/\/+$/, ''),
     },
     archiveDriver,
+    lowMemory: e.LOW_MEMORY,
     upload: {
       maxBytes: Math.round(e.MAX_UPLOAD_MB * 1024 * 1024),
       previewMaxSize: e.PREVIEW_MAX_SIZE,

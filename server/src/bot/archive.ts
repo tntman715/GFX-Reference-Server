@@ -55,13 +55,16 @@ export class DiscordArchive implements OriginalArchive {
   /** 같은 원본을 연달아 받을 때를 위한 작은 캐시 (최대 ~100MB) */
   private cache = new Map<number, { file: OriginalFile; at: number }>();
   private cacheBytes = 0;
-  private readonly cacheLimit = 100 * 1024 * 1024;
+  private readonly cacheLimit: number;
 
   constructor(
     private readonly client: Client,
     private readonly config: Config,
     private readonly siteUrl: (ref: Reference) => string,
-  ) {}
+  ) {
+    // 작은 서버에서는 20MB 만
+    this.cacheLimit = (config.lowMemory ? 20 : 100) * 1024 * 1024;
+  }
 
   isAvailable(): boolean {
     return this.client.isReady();

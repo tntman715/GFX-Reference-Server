@@ -574,7 +574,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
         .webp({ quality: 82 })
         .toBuffer();
       importImages.set(id, img);
-      if (importImages.size > 200) importImages.delete(importImages.keys().next().value!);
+      if (importImages.size > (config.lowMemory ? 30 : 200)) importImages.delete(importImages.keys().next().value!);
     }
     return c.body(new Uint8Array(img), 200, { 'Content-Type': 'image/webp', 'Cache-Control': 'private, max-age=3600' });
   });

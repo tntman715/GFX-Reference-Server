@@ -20,6 +20,13 @@ async function main() {
     throw err;
   }
 
+  if (config.lowMemory) {
+    // 큰 이미지를 동시에 여러 장 풀어 놓지 않도록 한 번에 하나씩 처리
+    const sharp = (await import('sharp')).default;
+    sharp.concurrency(1);
+    log.info('절약 모드(LOW_MEMORY): 이미지 처리 1개씩, 캐시 축소');
+  }
+
   const ctx = await createContext(config);
   log.info(
     `DB: ${ctx.db.kind} · 미리보기 저장소: ${ctx.storage.kind} · 원본 보관: ${config.archiveDriver} · 봇: ${config.discord.botEnabled ? '사용' : '사용 안 함'}`,

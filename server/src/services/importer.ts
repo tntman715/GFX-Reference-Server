@@ -130,7 +130,15 @@ export interface ImportItem {
   tags: string[];
   status: ImportStatus;
   refId: number | null;
+  /** 지금 태그를 붙이고 있는 사람 (잠깐 맡아 둔 사람) */
+  claimedBy: string | null;
+  claimedAt: string | null;
+  /** 저장하거나 건너뛴 사람 */
+  decidedBy: string | null;
 }
+
+/** 한 사람이 후보를 맡아 두는 시간. 지나면 다른 사람이 이어서 할 수 있음 */
+export const CLAIM_MINUTES = 10;
 
 type Row = Record<string, unknown>;
 
@@ -154,6 +162,9 @@ function mapRow(r: Row): ImportItem {
     tags: (typeof r.tags === 'string' ? JSON.parse(r.tags) : r.tags) as string[],
     status: r.status as ImportStatus,
     refId: r.ref_id === null || r.ref_id === undefined ? null : Number(r.ref_id),
+    claimedBy: (r.claimed_by as string) ?? null,
+    claimedAt: r.claimed_at ? new Date(r.claimed_at as string).toISOString() : null,
+    decidedBy: (r.decided_by as string) ?? null,
   };
 }
 
@@ -283,9 +294,35 @@ export class ImportService {
   }
 
   /** 오래된 글부터 (채널에 올라온 순서대로 정리하기 쉽게) */
-  async list(status: ImportStatus): Promise<ImportItem[]> {
-    const rows = await this.db.query<Row>('SELECT * FROM import_items WHERE status = $1 ORDER BY posted_at, id', [status]);
+  async list(status: ImportStatus, viewerId?: string): Promise<ImportItem[]> {
+    // 다른 사람이 맡아 둔(태그 붙이는 중인) 후보는 빼고 보여줌
+    const rows = viewerId
+      ? await this.db.query<Row>(
+          `SELECT * FROM import_items WHERE status = $1
+             AND NOT (claimed_by IS NOT NULL AND claimed_by <> $2 AND claimed_at > now() - make_interval(mins => $3))
+           ORDER BY posted_at, id`,
+          [status, viewerId, CLAIM_MINUTES],
+        )
+      : await this.db.query<Row>('SELECT * FROM import_items WHERE status = $1 ORDER BY posted_at, id', [status]);
     return rows.map(mapRow);
+  }
+
+  /**
+   * 후보를 맡아 두기 (태그 화면에 띄울 때). 다른 사람이 맡고 있으면 409.
+   * 맡은 지 CLAIM_MINUTES 분이 지나면 다른 사람이 가져갈 수 있음.
+   */
+  async claim(id: number, userId: string): Promise<ImportItem> {
+    const rows = await this.db.query<Row>(
+      `UPDATE import_items SET claimed_by = $2, claimed_at = now()
+       WHERE id = $1 AND status <> 'imported'
+         AND (claimed_by IS NULL OR claimed_by = $2 OR claimed_at <= now() - make_interval(mins => $3))
+       RETURNING *`,
+      [id, userId, CLAIM_MINUTES],
+    );
+    if (rows[0]) return mapRow(rows[0]);
+    const item = await this.get(id);
+    if (item.status === 'imported') throw new UserError('이미 옮긴 레퍼런스예요. (다른 분이 먼저 저장했을 수 있어요)', { status: 409, code: 'already_imported' });
+    throw new UserError('다른 분이 지금 태그를 붙이고 있어요. 다음 것으로 넘어갈게요.', { status: 409, code: 'claimed' });
   }
 
   async get(id: number): Promise<ImportItem> {
@@ -298,8 +335,9 @@ export class ImportService {
   async update(
     id: number,
     patch: { mapName?: string | null; creatorName?: string | null; category?: string; tags?: string[] },
+    userId?: string,
   ): Promise<ImportItem> {
-    const item = await this.get(id);
+    const item = userId ? await this.claim(id, userId) : await this.get(id);
     if (item.status === 'imported') throw new UserError('이미 옮긴 레퍼런스예요.');
     if (patch.category !== undefined && !isCategory(patch.category)) throw new UserError('잘못된 분류입니다.');
     const tags = patch.tags ? (await this.refs.resolveTags(patch.tags)).map((t) => t.name) : item.tags;
@@ -318,10 +356,14 @@ export class ImportService {
     return this.get(id);
   }
 
-  async setStatus(id: number, status: 'pending' | 'skipped'): Promise<ImportItem> {
-    const item = await this.get(id);
+  async setStatus(id: number, status: 'pending' | 'skipped', userId?: string): Promise<ImportItem> {
+    // 건너뛰기는 맡은 사람만, 되돌리기는 누구나
+    const item = userId && status === 'skipped' ? await this.claim(id, userId) : await this.get(id);
     if (item.status === 'imported') throw new UserError('이미 옮긴 레퍼런스예요.');
-    await this.db.query('UPDATE import_items SET status = $2, updated_at = now() WHERE id = $1', [id, status]);
+    await this.db.query(
+      `UPDATE import_items SET status = $2, decided_by = $3, claimed_by = NULL, claimed_at = NULL, updated_at = now() WHERE id = $1`,
+      [id, status, status === 'skipped' ? (userId ?? null) : null],
+    );
     return this.get(id);
   }
 
@@ -335,12 +377,14 @@ export class ImportService {
 
   /**
    * 레퍼런스로 저장: 원본을 받아 아카이브 채널에 다시 올리고 refs 에 넣음.
-   * 올린 사람은 저장한 관리자, 올린 날짜는 원래 채팅에 올린 날짜.
+   * 올린 사람(점수를 받는 사람)은 태그를 붙여 저장한 사람, 올린 날짜는 원래 채팅에 올린 날짜.
    */
   async commit(id: number, uploader: UserInfo, opts: { allowDuplicate?: boolean } = {}) {
+    await this.claim(id, uploader.id);
     const { item, file } = await this.original(id);
     if (item.status === 'imported') throw new UserError('이미 옮긴 레퍼런스예요.');
     if (!item.creatorName) throw new UserError('제작자를 입력해 주세요.');
+    if (!item.tags.length) throw new UserError('태그를 하나 이상 골라 주세요.', { code: 'tags_required' });
     // 비슷한 이미지가 이미 있으면 DuplicateError (409) — 화면에서 "그래도 저장" 으로 다시 부름
     const ref = await this.refs.create(
       {
@@ -354,7 +398,10 @@ export class ImportService {
       },
       opts,
     );
-    await this.db.query(`UPDATE import_items SET status = 'imported', ref_id = $2, updated_at = now() WHERE id = $1`, [id, ref.id]);
+    await this.db.query(
+      `UPDATE import_items SET status = 'imported', ref_id = $2, decided_by = $3, claimed_by = NULL, claimed_at = NULL, updated_at = now() WHERE id = $1`,
+      [id, ref.id, uploader.id],
+    );
     return { item: await this.get(id), ref };
   }
 

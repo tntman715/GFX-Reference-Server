@@ -91,14 +91,20 @@ body {
   overflow-x: hidden;
 }
 
-/* 필름 그레인: 화면 전체에 살짝 움직이는 노이즈 */
+/* 필름 그레인: 배경에만 살짝 움직이는 노이즈.
+   콘텐츠 뒤(z-index: -1)에 깔아서 썸네일·사진 위에는 보이지 않음.
+   body 를 isolation 으로 묶어야 body 배경 위, 콘텐츠 아래에 그려짐 */
+body {
+  isolation: isolate;
+}
+
 body::before {
   content: '';
   position: fixed;
   inset: -10%;
-  z-index: 300;
+  z-index: -1;
   pointer-events: none;
-  opacity: 0.14;
+  opacity: 0.1;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.25' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1.1 -.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain 0.9s steps(5) infinite;
 }
@@ -4154,5 +4160,174 @@ label.check {
 
   .board-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
+
+/* ── 그레인 설정 ─────────────────────────────────────── */
+
+/* 표지 사진 위에는 그레인을 얹지 않음 (작품 자체의 질감과 헷갈리지 않게) */
+.hero-banner::after {
+  content: none;
+}
+
+.profile-head::after {
+  opacity: 0.35;
+}
+
+/* 그레인 끄기: 배경 노이즈와 색 위의 인쇄 질감을 모두 없앰 */
+html.no-grain {
+  --print: none;
+}
+
+html.no-grain body::before,
+html.no-grain .profile-head::after {
+  content: none;
+}
+
+.grain-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--fast), background var(--fast);
+}
+
+.grain-toggle::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: background var(--fast);
+}
+
+.grain-toggle:hover {
+  color: var(--text);
+}
+
+.grain-toggle[aria-pressed='false'] {
+  color: var(--text-faint);
+}
+
+.grain-toggle[aria-pressed='false']::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+
+@media (max-width: 640px) {
+  .grain-toggle {
+    padding: 0 9px;
+  }
+}
+
+/* ── 사이트에서 올리기 ──────────────────────────────── */
+.upload-btn {
+  height: 30px;
+}
+
+.drop-zone {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color var(--fast), background var(--fast);
+}
+
+.drop-zone:hover,
+.drop-zone.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.drop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 150px;
+  padding: 16px;
+  text-align: center;
+}
+
+.drop-inner b {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.drop-inner img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius);
+  object-fit: contain;
+}
+
+.drop-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.upload-dup:empty {
+  display: none;
+}
+
+.upload-dup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.upload-dup-title {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.upload-dup-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.upload-dup-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 140px;
+  font-size: 12px;
+}
+
+.upload-dup-list img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.upload-dup .btn {
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .upload-btn {
+    padding: 0 10px;
   }
 }

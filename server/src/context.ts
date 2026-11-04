@@ -19,6 +19,8 @@ export interface BotBridge {
   inviteInfo?(): { guildName: string | null; botName: string | null };
   /** 서버 관리 권한 또는 ADMIN_ROLE_IDS 역할이 있는지 (웹 관리자 화면용) */
   isGuildAdmin?(userId: string): Promise<boolean>;
+  /** 디스코드 서버 멤버인지 (사이트에서 올리기 / 가져오기) */
+  isGuildMember?(userId: string): Promise<boolean>;
   /** 사용자에게 디스코드 DM 알림 보내기 (DM 을 막아 두었으면 조용히 실패) */
   notifyUser?(userId: string, content: string): Promise<void>;
   /** 예전 채팅 채널에서 레퍼런스를 옮겨올 때 메시지/원본을 읽는 기능 */

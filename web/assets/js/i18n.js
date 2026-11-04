@@ -23,6 +23,7 @@ const STRINGS = {
     'account.loggedOut': '로그아웃했어요',
     'random.title': '아무 레퍼런스나 하나 보기',
     'lang.label': '언어',
+    'grain.title': '화면의 그레인(노이즈) 효과 켜기 / 끄기',
     'start.failed': '서버에 연결할 수 없어요. 잠시 후 새로고침해 주세요.',
     'login.failed': '로그인하지 못했어요.',
 
@@ -132,7 +133,27 @@ const STRINGS = {
     'detail.similarEmpty': '색감이 비슷한 레퍼런스가 아직 없어요.',
 
     // 바닥
-    'footer.text': '새 레퍼런스는 디스코드 서버에서 /업로드 명령어로 올려요. 올린 작업물은 이곳에 바로 정리돼요.',
+    'footer.text': '새 레퍼런스는 위쪽 Upload 버튼이나 디스코드 서버의 /업로드 명령어로 올려요. 올린 작업물은 이곳에 바로 정리돼요.',
+
+    'account.import': '레퍼런스 가져오기',
+    'upload.button': '레퍼런스 올리기',
+    'upload.loginReason': '로그인하면 사이트에서 바로 레퍼런스를 올릴 수 있어요.',
+    'upload.membersOnly': 'GFX References 디스코드 서버 멤버만 올릴 수 있어요.',
+    'upload.offline': '디스코드 봇이 오프라인이라 지금은 올릴 수 없어요.',
+    'upload.lead': '디스코드 /업로드 와 같아요. 올리면 +{n}점을 받아요.',
+    'upload.pick': '이미지를 끌어다 놓거나 눌러서 고르세요',
+    'upload.change': '다른 이미지로 바꾸려면 누르세요',
+    'upload.limit': 'PNG · JPG · WEBP · 최대 {mb}MB',
+    'upload.notImage': '이미지 파일만 올릴 수 있어요.',
+    'upload.tooBig': '파일이 너무 커요. 최대 {mb}MB 까지 올릴 수 있어요.',
+    'upload.needFile': '이미지를 먼저 골라 주세요.',
+    'upload.titleHint': '비우면 맵 이름이나 파일 이름',
+    'upload.creatorsHint': '비우면 내 이름 ({name})',
+    'upload.submit': '올리기',
+    'upload.sending': '올리는 중…',
+    'upload.done': '#{id} 로 올렸어요!',
+    'upload.duplicate': '⚠️ 비슷한 레퍼런스가 이미 있어요. 같은 작품이 아닌지 확인해 주세요.',
+    'upload.anyway': '그래도 올리기',
     'footer.random': '랜덤으로 하나 보기',
     'footer.note': '원본 파일은 디스코드 서버에 보관되며, 디스코드로 로그인하면 받을 수 있어요.',
 
@@ -217,6 +238,7 @@ const STRINGS = {
     'account.loggedOut': 'Logged out',
     'random.title': 'Open a random reference',
     'lang.label': 'Language',
+    'grain.title': 'Turn the grain (noise) effect on or off',
     'start.failed': "Can't reach the server. Try refreshing in a moment.",
     'login.failed': 'Login failed.',
 
@@ -240,7 +262,7 @@ const STRINGS = {
     'login.expired': 'The code expired. Please try again.',
     'login.done': 'Logged in as {name}',
 
-    'explore.lead': '{n} thumbnails and artworks from our Discord server',
+    'explore.lead': '{n} thumbnails, PFPs and banners from our Discord server',
     'explore.search': 'Search titles, maps, creators, tags or #number',
     'explore.searchLabel': 'Search',
     'explore.sortLabel': 'Sort',
@@ -262,7 +284,7 @@ const STRINGS = {
     'explore.noMatch': 'No references match these filters.',
     'explore.noRefs': 'No references yet. They can be uploaded on Discord with /업로드.',
 
-    'feed.lead': 'GM thumbnails from the archive, laid out like a YouTube feed. Video titles are the map names.',
+    'feed.lead': 'GD thumbnails from the archive, laid out like a YouTube feed. Video titles are the map names.',
     'feed.search': 'Search map names or creators',
     'feed.sort.random': 'Random',
     'feed.sort.popular': 'Popular',
@@ -316,7 +338,27 @@ const STRINGS = {
     'detail.archiveOff': 'The Discord bot is offline, so originals are unavailable right now.',
     'detail.similarEmpty': 'No references with a similar palette yet.',
 
-    'footer.text': 'New references are uploaded on our Discord server with the /업로드 command and show up here right away.',
+    'footer.text': 'New references are uploaded with the Upload button above or the /업로드 command on our Discord server, and show up here right away.',
+
+    'account.import': 'Import references',
+    'upload.button': 'Upload a reference',
+    'upload.loginReason': 'Log in to upload references right from the site.',
+    'upload.membersOnly': 'Only members of the GFX References Discord server can upload.',
+    'upload.offline': 'The Discord bot is offline, so uploads are paused.',
+    'upload.lead': 'Same as /업로드 on Discord. You get +{n} points.',
+    'upload.pick': 'Drop an image here or click to choose',
+    'upload.change': 'Click to pick a different image',
+    'upload.limit': 'PNG · JPG · WEBP · up to {mb}MB',
+    'upload.notImage': 'Only image files can be uploaded.',
+    'upload.tooBig': 'That file is too big. The limit is {mb}MB.',
+    'upload.needFile': 'Pick an image first.',
+    'upload.titleHint': 'Leave empty to use the map or file name',
+    'upload.creatorsHint': 'Leave empty to use your name ({name})',
+    'upload.submit': 'Upload',
+    'upload.sending': 'Uploading…',
+    'upload.done': 'Uploaded as #{id}!',
+    'upload.duplicate': '⚠️ A similar reference already exists. Please check it is not the same work.',
+    'upload.anyway': 'Upload anyway',
     'footer.random': 'Open a random one',
     'footer.note': 'Original files are kept on the Discord server and can be downloaded after logging in with Discord.',
 
@@ -386,9 +428,9 @@ const STRINGS = {
 
 // 서버가 한국어로 보내 주는 이름들의 영어 표기 (key 기준)
 const EN_CATEGORIES = {
-  gm_thumbnail: { label: 'GM Thumbnail', shortLabel: 'Thumbnail' },
-  gm_artwork: { label: 'GM Artwork', shortLabel: 'Artwork' },
-  non_gm: { label: 'Non-GM', shortLabel: 'Non-GM' },
+  gm_thumbnail: { label: 'GD Thumbnail', shortLabel: 'Thumbnail' },
+  gm_artwork: { label: 'GD PFP, Banner etc.', shortLabel: 'PFP, Banner etc.' },
+  non_gm: { label: 'Non-GD', shortLabel: 'Non-GD' },
 };
 const EN_PERIODS = { week: 'This week', month: 'This month', year: 'This year', all: 'All time' };
 

@@ -20,6 +20,12 @@
     />
     <link rel="stylesheet" href="assets/styles.css" />
     <script src="config.js"></script>
+    <script>
+      // 그레인 끄기 설정을 화면을 그리기 전에 적용 (깜빡임 방지)
+      try {
+        if (localStorage.getItem('gfx.grain') === 'off') document.documentElement.classList.add('no-grain');
+      } catch (e) {}
+    </script>
     <script type="module" src="assets/js/main.js"></script>
   </head>
   <body>
@@ -47,6 +53,8 @@
           </button>
         </nav>
         <div class="topbar-right">
+          <button type="button" class="btn primary sm upload-btn" id="upload-btn" data-i18n-title="upload.button">Upload</button>
+          <button type="button" class="grain-toggle" id="grain-toggle" aria-pressed="true" data-i18n-title="grain.title">Grain</button>
           <div class="lang-switch" id="lang-switch" role="group" data-i18n-aria="lang.label">
             <button type="button" data-lang="ko" lang="ko">KO</button>
             <button type="button" data-lang="en" lang="en">EN</button>

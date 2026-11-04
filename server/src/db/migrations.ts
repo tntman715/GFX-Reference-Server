@@ -195,6 +195,17 @@ CREATE TABLE board_items (
 CREATE INDEX board_items_ref_idx ON board_items (ref_id);
 `,
   },
+  {
+    id: 4,
+    name: 'import_claims',
+    sql: `
+-- 가져오기를 여러 사람이 함께 할 때: 지금 누가 태그를 붙이는 중인지(잠깐 맡아 두기)와
+-- 누가 저장/건너뛰기를 했는지 기록
+ALTER TABLE import_items ADD COLUMN claimed_by TEXT;
+ALTER TABLE import_items ADD COLUMN claimed_at TIMESTAMPTZ;
+ALTER TABLE import_items ADD COLUMN decided_by TEXT;
+`,
+  },
 ];
 
 function sqlString(s: string): string {

@@ -4,39 +4,52 @@ import { clear, debounce, fmtDate, h, spinner, toast } from '../dom.js';
 import { store } from '../store.js';
 
 /**
- * 관리자 화면: 예전 채팅 채널(gdfx 등)의 "맵이름 by 제작자" 글을 레퍼런스로 옮기기.
- * 키보드만으로 빠르게 태그를 붙일 수 있게 만들었어요. (관리자 전용이라 한국어로만)
+ * 가져오기: 예전 채팅 채널(gdfx 등)의 "맵이름 by 제작자" 글을 레퍼런스로 옮기기.
+ * 디스코드 서버 멤버 누구나 태그를 붙여 저장할 수 있고, 저장한 사람이 올린 사람(점수)이 됩니다.
+ * 채널 읽기 · 이름 정리 · 새 태그 만들기는 관리자만. 키보드만으로 빠르게 태그를 붙일 수 있어요. (한국어로만)
  */
 
 const TAG_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'];
 const CATEGORY_KEYS = { z: 'gm_thumbnail', x: 'gm_artwork', c: 'non_gm' };
-const BASE = '/api/admin/import';
+const BASE = '/api/import';
+const ADMIN = '/api/admin/import';
+/** 다른 사람이 맡고 있거나 이미 저장한 후보 */
+const TAKEN = new Set(['claimed', 'already_imported']);
 
 let guildId = null;
 const discordLink = (item) => `https://discord.com/channels/${guildId ?? '@me'}/${item.channelId}/${item.messageId}`;
 const keyBadge = (k) => h('kbd', k.toUpperCase());
 
 export function mountImport(root) {
-  const head = h('div.page-head', h('div', h('h1', 'Import'), h('p', '예전 채널에 올라온 "맵이름 by 제작자" 글을 레퍼런스로 옮겨요.')));
+  const points = store.meta?.scoring?.pointsPerUpload ?? 10;
+  const head = h(
+    'div.page-head',
+    h(
+      'div',
+      h('h1', 'Import'),
+      h('p', `예전 채널에 올라온 "맵이름 by 제작자" 글에 태그를 붙여 레퍼런스로 옮겨요. 저장하면 내가 올린 레퍼런스가 되고 +${points}점을 받아요.`),
+    ),
+  );
   const body = h('div', spinner());
   root.append(head, body);
 
   const me = store.me;
-  if (!me?.isAdmin) {
+  if (!me?.isMember && !me?.isAdmin) {
     clear(body).append(
       me
-        ? emptyState('서버 관리자만 사용할 수 있어요.')
-        : emptyState('관리자 로그인이 필요해요.', h('button.btn.primary', { onclick: () => openLogin() }, '로그인')),
+        ? emptyState('GFX References 디스코드 서버 멤버만 사용할 수 있어요.')
+        : emptyState('로그인이 필요해요.', h('button.btn.primary', { onclick: () => openLogin() }, '로그인')),
     );
     // 이 화면에서 로그인하면 바로 다시 그림
     const off = store.on((s) => {
-      if (s.me?.isAdmin) {
+      if (s.me?.isMember || s.me?.isAdmin) {
         off();
         window.location.reload();
       }
     });
     return { destroy: off };
   }
+  const isAdmin = !!me.isAdmin;
 
   const state = {
     tab: 'tag',
@@ -60,7 +73,17 @@ export function mountImport(root) {
   const countsEl = h('div.imp-counts');
   const tabs = h('div.imp-tabs');
   const panel = h('div.imp-panel');
-  clear(body).append(h('div.imp-toolbar', h('div.imp-scan', channelSelect, scanBtn, scanInfo, channelInfo), countsEl), tabs, panel);
+  clear(body).append(
+    h(
+      'div.imp-toolbar',
+      isAdmin
+        ? h('div.imp-scan', channelSelect, scanBtn, scanInfo, channelInfo)
+        : h('div.imp-scan', h('span.imp-scan-info', '다른 분이 태그를 붙이는 중인 후보는 자동으로 건너뛰어요.')),
+      countsEl,
+    ),
+    tabs,
+    panel,
+  );
 
   function renderCounts() {
     const c = state.counts;
@@ -70,6 +93,8 @@ export function mountImport(root) {
       h('span.chip.static', `건너뜀 ${c.skipped}`),
     );
     const nameCount = state.groups.creator.length + state.groups.map.length;
+    // 이름 정리(모든 레퍼런스의 이름을 바꿈)는 관리자만
+    if (!isAdmin) return void clear(tabs);
     clear(tabs).append(
       h('button.chip', { class: state.tab === 'tag' ? 'on' : '', onclick: () => setTab('tag') }, '태그 붙이기'),
       h('button.chip', { class: state.tab === 'names' ? 'on' : '', onclick: () => setTab('names') }, '이름 정리', nameCount ? h('span.count', String(nameCount)) : null),
@@ -99,12 +124,13 @@ export function mountImport(root) {
   }
 
   async function loadChannels() {
+    if (!isAdmin) return;
     clear(channelInfo);
     clear(channelSelect).append(h('option', { value: '' }, '채널 불러오는 중…'));
     let channels = [];
     let error = null;
     try {
-      ({ channels } = await api.get(`${BASE}/channels`));
+      ({ channels } = await api.get(`${ADMIN}/channels`));
     } catch (err) {
       error = err;
     }
@@ -128,7 +154,7 @@ export function mountImport(root) {
   async function startScan() {
     if (!channelSelect.value) return;
     try {
-      const data = await api.post(`${BASE}/scan`, { channelId: channelSelect.value });
+      const data = await api.post(`${ADMIN}/scan`, { channelId: channelSelect.value });
       state.scan = data.scan;
       renderScan();
       pollScan();
@@ -158,7 +184,8 @@ export function mountImport(root) {
   }
 
   async function loadGroups() {
-    const [c, m] = await Promise.all([api.get(`${BASE}/names`, { field: 'creator' }), api.get(`${BASE}/names`, { field: 'map' })]);
+    if (!isAdmin) return;
+    const [c, m] = await Promise.all([api.get(`${ADMIN}/names`, { field: 'creator' }), api.get(`${ADMIN}/names`, { field: 'map' })]);
     state.groups = { creator: c.groups, map: m.groups };
     renderCounts();
   }
@@ -205,8 +232,10 @@ export function mountImport(root) {
         emptyState(
           state.status === 'pending'
             ? state.counts.imported
-              ? '대기 중인 후보가 없어요. 모두 정리했어요! 🎉'
-              : '아직 후보가 없어요. 위에서 채널을 고르고 "채널 확인하기"를 눌러 주세요.'
+              ? '지금 정리할 후보가 없어요. 모두 정리했거나 다른 분들이 작업 중이에요. 🎉'
+              : isAdmin
+                ? '아직 후보가 없어요. 위에서 채널을 고르고 "채널 확인하기"를 눌러 주세요.'
+                : '아직 후보가 없어요.'
             : '건너뛴 후보가 없어요.',
         ),
       );
@@ -306,7 +335,7 @@ export function mountImport(root) {
             ` #${t.name}`,
           ),
         ),
-        h('button.chip', { onclick: addTag, title: '새 태그 만들기' }, '＋ 새 태그'),
+        isAdmin ? h('button.chip', { onclick: addTag, title: '새 태그 만들기' }, '＋ 새 태그') : null,
       );
     };
 
@@ -356,6 +385,30 @@ export function mountImport(root) {
 
     // 다음 이미지 미리 받아두기
     for (const next of state.items.slice(state.index + 1, state.index + 3)) new Image().src = api.url(`${BASE}/items/${next.id}/image`);
+
+    // 이 후보를 맡아 둠: 다른 분이 이미 맡았으면 다음 것으로
+    if (state.status === 'pending') {
+      api.post(`${BASE}/items/${item.id}/claim`).catch((err) => {
+        if (form?.id !== item.id) return;
+        if (isTaken(err)) dropTaken(err);
+      });
+    }
+  }
+
+  function isTaken(err) {
+    return err instanceof ApiError && TAKEN.has(err.code);
+  }
+
+  /** 다른 분이 맡았거나 이미 저장한 후보: 알려 주고 목록에서 빼기 */
+  function dropTaken(err) {
+    toast(err.message);
+    if (err.code === 'already_imported') {
+      state.counts.pending = Math.max(0, state.counts.pending - 1);
+      state.counts.imported++;
+      renderCounts();
+    }
+    if (form) form.dirty = false;
+    removeCurrent();
   }
 
   function setCategory(key) {
@@ -421,7 +474,15 @@ export function mountImport(root) {
     try {
       await saveDraft();
     } catch (err) {
-      handleApiError(err);
+      if (!isTaken(err)) {
+        handleApiError(err);
+        return;
+      }
+      // 다른 분이 가져간 후보는 빼고 넘어감
+      toast(err.message);
+      state.items.splice(state.index, 1);
+      state.index = Math.max(0, Math.min(delta > 0 ? state.index : next, state.items.length - 1));
+      renderTagger();
       return;
     }
     state.index = next;
@@ -450,6 +511,7 @@ export function mountImport(root) {
       removeCurrent();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'duplicate') showDuplicate(err);
+      else if (isTaken(err)) dropTaken(err);
       else handleApiError(err);
     } finally {
       state.busy = false;
@@ -484,7 +546,8 @@ export function mountImport(root) {
       renderCounts();
       removeCurrent();
     } catch (err) {
-      handleApiError(err);
+      if (isTaken(err)) dropTaken(err);
+      else handleApiError(err);
     }
   }
 
@@ -580,7 +643,7 @@ export function mountImport(root) {
           {
             onclick: async () => {
               try {
-                const res = await api.post(`${BASE}/names/rename`, { field, from: g.names.map((n) => n.name), to: input.value });
+                const res = await api.post(`${ADMIN}/names/rename`,{ field, from: g.names.map((n) => n.name), to: input.value });
                 toast(`"${input.value.trim()}" 로 통일했어요. (후보 ${res.items}개 · 레퍼런스 ${res.refs}개)`);
                 await Promise.all([loadGroups(), loadItems()]);
                 renderNames();
@@ -596,7 +659,7 @@ export function mountImport(root) {
           {
             onclick: async () => {
               try {
-                await api.post(`${BASE}/names/ignore`, { field, names: g.names.map((n) => n.name) });
+                await api.post(`${ADMIN}/names/ignore`,{ field, names: g.names.map((n) => n.name) });
                 await loadGroups();
                 renderNames();
               } catch (err) {

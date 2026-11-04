@@ -4,7 +4,7 @@ import type { BotBridge } from '../src/context.js';
 import { type ImportSource, parseCaption, type SourceMessage } from '../src/services/importer.js';
 import { DuplicateError } from '../src/services/references.js';
 import { editDistance, findSimilarGroups, groupKey, looksSame, normalizeName, similarTo } from '../src/util/similar.js';
-import { alice, bob, file, makeContext, makeImage } from './helpers.js';
+import { alice, bob, carol, file, makeContext, makeImage } from './helpers.js';
 
 describe('"맵이름 by 제작자" 읽기', () => {
   it('기본 형식과 꾸밈 문법', () => {
@@ -92,6 +92,8 @@ const bot: BotBridge = {
   isOnline: () => true,
   sendOriginalDm: async () => undefined,
   isGuildAdmin: async (id) => id === alice.id,
+  // carol 은 디스코드 서버 멤버가 아님
+  isGuildMember: async (id) => id === alice.id || id === bob.id,
   importSource: source,
 };
 
@@ -156,6 +158,8 @@ describe('태그 붙이고 옮기기', () => {
     const items = await ctx.importer.list('pending');
     await expect(ctx.importer.update(items[0].id, { tags: ['없는태그'] })).rejects.toThrow(/없는 태그/);
 
+    await expect(ctx.importer.commit(items[1].id, alice)).rejects.toThrow(/태그를 하나 이상/);
+    await ctx.importer.update(items[1].id, { tags: ['glow'] });
     await ctx.refs.create({ file: file(images.a2), category: 'non_gm', title: '이미 있음', uploader: bob });
     await expect(ctx.importer.commit(items[1].id, alice)).rejects.toBeInstanceOf(DuplicateError);
     const forced = await ctx.importer.commit(items[1].id, alice, { allowDuplicate: true });
@@ -201,39 +205,122 @@ describe('이름 통일', () => {
   });
 });
 
-describe('관리자 API', () => {
-  it('관리자만 쓸 수 있고, me 에 관리자 여부가 나옴', async () => {
+describe('가져오기 API (서버 멤버 누구나)', () => {
+  const setup = () => {
     const app = createApi(ctx);
     const as = async (user: typeof alice, path: string, init: RequestInit = {}) => {
       const token = await ctx.community.createSession(user, 'plugin');
-      return app.request(path, { ...init, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' } });
+      return app.request(path, { ...init, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(init.headers ?? {}) } });
     };
-    expect((await app.request('/api/admin/import/status')).status).toBe(401);
-    expect((await as(bob, '/api/admin/import/status')).status).toBe(403);
-    expect((await (await as(alice, '/api/auth/me')).json()).user.isAdmin).toBe(true);
-    expect((await (await as(bob, '/api/auth/me')).json()).user.isAdmin).toBe(false);
+    return { app, as };
+  };
+
+  it('멤버는 태그 붙여 저장 (올린 사람 = 저장한 사람), 관리자 기능은 관리자만', async () => {
+    const { app, as } = setup();
+    expect((await app.request('/api/import/status')).status).toBe(401);
+    expect((await as(carol, '/api/import/status')).status).toBe(403);
+    const st = await (await as(bob, '/api/import/status')).json();
+    expect(st.isAdmin).toBe(false);
+    const meBob = (await (await as(bob, '/api/auth/me')).json()).user;
+    expect(meBob).toMatchObject({ isAdmin: false, isMember: true });
+    expect((await (await as(carol, '/api/auth/me')).json()).user.isMember).toBe(false);
+
+    // 관리자 전용
+    expect((await as(bob, '/api/admin/import/channels')).status).toBe(403);
+    expect((await as(bob, '/api/admin/import/names?field=creator')).status).toBe(403);
+    expect((await as(bob, '/api/admin/tags', { method: 'POST', body: JSON.stringify({ name: 'newtag' }) })).status).toBe(403);
+    expect((await as(alice, '/api/admin/import/channels')).status).toBe(200);
 
     await ctx.importer.runScan(source, '900');
-    const { items } = await (await as(alice, '/api/admin/import/items')).json();
+    const { items } = await (await as(bob, '/api/import/items')).json();
     expect(items).toHaveLength(3);
 
-    const img = await as(alice, `/api/admin/import/items/${items[0].id}/image`);
+    const img = await as(bob, `/api/import/items/${items[0].id}/image`);
     expect(img.headers.get('content-type')).toBe('image/webp');
 
-    const saved = await as(alice, `/api/admin/import/items/${items[0].id}`, { method: 'POST', body: JSON.stringify({ tags: ['glow'], category: 'gm_artwork' }) });
-    expect((await saved.json()).item).toMatchObject({ tags: ['glow'], category: 'gm_artwork' });
+    const saved = await as(bob, `/api/import/items/${items[0].id}`, { method: 'POST', body: JSON.stringify({ tags: ['glow'], category: 'gm_artwork' }) });
+    expect((await saved.json()).item).toMatchObject({ tags: ['glow'], category: 'gm_artwork', claimedBy: bob.id });
 
-    const done = await (await as(alice, `/api/admin/import/items/${items[0].id}/commit`, { method: 'POST', body: '{}' })).json();
-    expect(done.ref.id).toBeGreaterThan(0);
+    const done = await (await as(bob, `/api/import/items/${items[0].id}/commit`, { method: 'POST', body: '{}' })).json();
+    const ref = await ctx.refs.require(done.ref.id);
+    expect(ref.uploaderId).toBe(bob.id);
+    expect((await ctx.community.score(bob.id))!.uploads).toBe(1);
 
-    await ctx.refs.create({ file: file(images.a2), category: 'non_gm', title: '이미 있음', uploader: bob });
-    const dup = await as(alice, `/api/admin/import/items/${items[1].id}/commit`, { method: 'POST', body: '{}' });
+    // 태그 없이 저장 불가
+    const noTags = await as(bob, `/api/import/items/${items[1].id}/commit`, { method: 'POST', body: '{}' });
+    expect((await noTags.json()).code).toBe('tags_required');
+
+    // 비슷한 이미지
+    await as(bob, `/api/import/items/${items[1].id}`, { method: 'POST', body: JSON.stringify({ tags: ['glow'] }) });
+    await ctx.refs.create({ file: file(images.a2), category: 'non_gm', title: '이미 있음', uploader: alice });
+    const dup = await as(bob, `/api/import/items/${items[1].id}/commit`, { method: 'POST', body: '{}' });
     expect(dup.status).toBe(409);
     expect((await dup.json()).matches[0]).toMatchObject({ title: '이미 있음' });
 
     const names = await (await as(alice, '/api/admin/import/names?field=creator')).json();
     expect(names.groups[0].suggested).toBe('zylenox');
-    const sug = await (await as(alice, '/api/admin/import/suggest?field=creator&name=Zylenoxx')).json();
+    const sug = await (await as(bob, '/api/import/suggest?field=creator&name=Zylenoxx')).json();
     expect(sug.similar.length).toBeGreaterThan(0);
+  });
+
+  it('여러 사람이 동시에: 다른 사람이 맡은 후보는 목록에서 빠지고 손댈 수 없음', async () => {
+    const { as } = setup();
+    await ctx.importer.runScan(source, '900');
+    const [first] = await ctx.importer.list('pending');
+
+    expect((await as(alice, `/api/import/items/${first.id}/claim`, { method: 'POST', body: '{}' })).status).toBe(200);
+    const bobList = (await (await as(bob, '/api/import/items')).json()).items.map((i: any) => i.id);
+    expect(bobList).not.toContain(first.id);
+    // 맡은 사람에게는 그대로 보임
+    expect((await (await as(alice, '/api/import/items')).json()).items.map((i: any) => i.id)).toContain(first.id);
+
+    const claim = await as(bob, `/api/import/items/${first.id}/claim`, { method: 'POST', body: '{}' });
+    expect(claim.status).toBe(409);
+    expect((await claim.json()).code).toBe('claimed');
+    expect((await as(bob, `/api/import/items/${first.id}`, { method: 'POST', body: JSON.stringify({ tags: ['3d'] }) })).status).toBe(409);
+    expect((await as(bob, `/api/import/items/${first.id}/skip`, { method: 'POST', body: '{}' })).status).toBe(409);
+
+    // 10분이 지나면 다른 사람이 가져갈 수 있음
+    await ctx.db.query(`UPDATE import_items SET claimed_at = now() - interval '11 minutes' WHERE id = $1`, [first.id]);
+    expect((await as(bob, `/api/import/items/${first.id}/claim`, { method: 'POST', body: '{}' })).status).toBe(200);
+
+    // 건너뛰면 건너뛴 사람이 기록됨, 저장된 후보는 already_imported
+    const skipped = await (await as(bob, `/api/import/items/${first.id}/skip`, { method: 'POST', body: '{}' })).json();
+    expect(skipped.item).toMatchObject({ status: 'skipped', decidedBy: bob.id, claimedBy: null });
+  });
+});
+
+describe('사이트에서 올리기', () => {
+  const upload = async (user: typeof alice | null, fields: Record<string, string>, image?: Buffer) => {
+    const app = createApi(ctx);
+    const form = new FormData();
+    if (image) form.append('file', new Blob([new Uint8Array(image)], { type: 'image/png' }), 'Bloodbath.png');
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    const headers: Record<string, string> = {};
+    if (user) headers.authorization = `Bearer ${await ctx.community.createSession(user, 'plugin')}`;
+    return app.request('/api/refs', { method: 'POST', headers, body: form });
+  };
+
+  it('멤버가 올리면 레퍼런스가 생기고 점수를 받음', async () => {
+    const res = await upload(bob, { category: 'gm_thumbnail', mapName: 'Bloodbath', creators: 'Riot, Kim', tags: 'glow, 3d' }, images.a1);
+    expect(res.status).toBe(200);
+    const { item } = (await res.json()) as any;
+    expect(item).toMatchObject({ mapName: 'Bloodbath', title: 'Bloodbath', tags: ['3d', 'glow'], uploader: { id: bob.id } });
+    expect(item.creators.map((c: any) => c.name)).toEqual(['Riot', 'Kim']);
+    expect((await ctx.community.score(bob.id))!.uploads).toBe(1);
+
+    // 같은 이미지는 409, 그래도 올리기
+    const dup = await upload(bob, { category: 'non_gm' }, images.a1);
+    expect(dup.status).toBe(409);
+    expect((await upload(bob, { category: 'non_gm', allowDuplicate: '1' }, images.a1)).status).toBe(200);
+  });
+
+  it('로그인 · 멤버 · 입력 검사', async () => {
+    expect((await upload(null, { category: 'non_gm' }, images.a1)).status).toBe(401);
+    expect((await upload(carol, { category: 'non_gm' }, images.a1)).status).toBe(403);
+    expect(((await (await upload(bob, { category: 'gm_thumbnail' }, images.a1)).json()) as any).code).toBe('map_required');
+    expect((await upload(bob, { category: 'non_gm' })).status).toBe(400);
+    const big = Buffer.alloc(ctx.config.upload.maxBytes + 1024 * 1024);
+    expect((await upload(bob, { category: 'non_gm' }, big)).status).toBe(413);
   });
 });

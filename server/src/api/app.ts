@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import {
   CATEGORIES,
@@ -156,6 +157,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
       sorts: SORTS,
       periods: Object.entries(POPULAR_PERIODS).map(([key, v]) => ({ key, label: v.label })),
       scoring: config.scoring,
+      upload: { maxBytes: config.upload.maxBytes },
       stats,
       bot: { online: botOnline },
       archive: { available: refs.archiveAvailable, kind: config.archiveDriver },
@@ -493,7 +495,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
   const importer = ctx.importer;
   const importImages = new Map<number, Buffer>();
   // 관리자 화면에서 실패한 요청은 서버 기록에 남김 (화면 알림은 금방 사라지므로)
-  app.use('/api/admin/*', async (c, next) => {
+  const logFailures = async (c: Context<Env>, next: () => Promise<void>) => {
     await next();
     if (c.res.status >= 400) {
       const body = (await c.res
@@ -502,68 +504,138 @@ export function createApi(ctx: AppContext): Hono<Env> {
         .catch(() => null)) as { error?: string } | null;
       log.warn(`${c.req.method} ${c.req.path} → ${c.res.status}${body?.error ? ` · ${body.error.split('\n')[0]}` : ''}`);
     }
-  });
+  };
+  app.use('/api/admin/*', logFailures);
+  app.use('/api/import/*', logFailures);
   const nameField = (v: string | undefined) => (v === 'map' ? 'map' : 'creator');
 
-  app.get('/api/admin/import/status', async (c) => {
-    await requireAdmin(c);
-    return c.json({ counts: await importer.counts(), scan: importer.scanState(), guildId: config.discord.guildId ?? null });
+  // ── 디스코드 서버 멤버 확인 (사이트에서 올리기 / 가져오기) ──
+  const memberCache = new Map<string, { ok: boolean; at: number }>();
+  const isMemberUser = async (userId: string): Promise<boolean> => {
+    const hit = memberCache.get(userId);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.ok;
+    if (!ctx.bot?.isGuildMember) return false;
+    const ok = await ctx.bot.isGuildMember(userId).catch(() => false);
+    memberCache.set(userId, { ok, at: Date.now() });
+    return ok;
+  };
+  const requireMember = async (c: Context<Env>): Promise<AuthedUser> => {
+    const user = requireUser(c);
+    if (!ctx.bot?.isOnline()) throw new ServiceUnavailableError();
+    if (!(await isMemberUser(user.id))) throw new ForbiddenError('GFX References 디스코드 서버 멤버만 사용할 수 있어요.');
+    return user;
+  };
+  const duplicateResponse = (c: Context<Env>, err: DuplicateError) =>
+    c.json(
+      {
+        error: err.message,
+        code: 'duplicate',
+        matches: err.matches.map((m) => ({ id: m.id, title: m.title, thumbUrl: `/api/refs/${m.id}/thumb` })),
+      },
+      409,
+    );
+  const uploadLimiter = new RateLimiter(10, 60_000);
+  const importLimiter = new RateLimiter(40, 60_000);
+
+  // ── 사이트에서 레퍼런스 올리기 (디스코드 /업로드 와 같음) ──
+  app.post(
+    '/api/refs',
+    bodyLimit({
+      maxSize: config.upload.maxBytes + 512 * 1024,
+      onError: (c) =>
+        c.json({ error: `파일이 너무 큽니다. 최대 ${Math.round(config.upload.maxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`, code: 'too_large' }, 413),
+    }),
+    async (c) => {
+      const user = await requireMember(c);
+      if (!uploadLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+      const form = await c.req.parseBody();
+      const upload = form.file;
+      if (!(upload instanceof File) || !upload.size) throw new UserError('이미지 파일을 골라 주세요.');
+      const text = (k: string) => (typeof form[k] === 'string' ? (form[k] as string) : null);
+      const category = text('category') ?? '';
+      if (!isCategory(category)) throw new UserError('분류를 선택해 주세요.');
+      try {
+        const ref = await refs.create(
+          {
+            file: { buffer: Buffer.from(await upload.arrayBuffer()), filename: upload.name || 'image.png', contentType: upload.type || null },
+            category,
+            title: text('title'),
+            mapName: text('mapName'),
+            creatorName: text('creators'),
+            tags: (text('tags') ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            uploader: user,
+          },
+          { allowDuplicate: text('allowDuplicate') === '1' },
+        );
+        const [item] = await refs.toPublicList([ref], user.id);
+        return c.json({ item });
+      } catch (err) {
+        if (err instanceof DuplicateError) return duplicateResponse(c, err);
+        throw err;
+      }
+    },
+  );
+
+  // ── 가져오기: 예전 채팅 채널의 레퍼런스를 함께 정리 ──
+  // 서버 멤버 누구나 태그를 붙여 저장할 수 있고, 저장한 사람이 올린 사람(점수)이 됩니다.
+  // 채널 읽기와 이름 통일, 새 태그 만들기는 관리자만.
+  app.get('/api/import/status', async (c) => {
+    const user = await requireMember(c);
+    return c.json({
+      counts: await importer.counts(),
+      scan: importer.scanState(),
+      guildId: config.discord.guildId ?? null,
+      isAdmin: await isAdminUser(user.id),
+    });
   });
 
-  app.get('/api/admin/import/channels', async (c) => {
-    await requireAdmin(c);
-    return c.json({ channels: await importer.listChannels() });
-  });
-
-  app.post('/api/admin/import/scan', async (c) => {
-    await requireAdmin(c);
-    const body = await c.req.json<{ channelId?: string }>().catch(() => ({}) as { channelId?: string });
-    if (!body.channelId || !/^\d+$/.test(body.channelId)) throw new UserError('채널을 골라 주세요.');
-    return c.json({ scan: importer.startScan(body.channelId) });
-  });
-
-  app.get('/api/admin/import/items', async (c) => {
-    await requireAdmin(c);
+  app.get('/api/import/items', async (c) => {
+    const user = await requireMember(c);
     const status = c.req.query('status');
-    return c.json({ items: await importer.list(status === 'skipped' || status === 'imported' ? status : 'pending') });
+    const s = status === 'skipped' || status === 'imported' ? status : 'pending';
+    return c.json({ items: await importer.list(s, s === 'pending' ? user.id : undefined) });
   });
 
-  app.post('/api/admin/import/items/:id', async (c) => {
-    await requireAdmin(c);
+  app.post('/api/import/items/:id/claim', async (c) => {
+    const user = await requireMember(c);
+    return c.json({ item: await importer.claim(Number(c.req.param('id')), user.id) });
+  });
+
+  app.post('/api/import/items/:id', async (c) => {
+    const user = await requireMember(c);
     const body = await c.req.json<Parameters<typeof importer.update>[1]>().catch(() => ({}));
-    return c.json({ item: await importer.update(Number(c.req.param('id')), body) });
+    return c.json({ item: await importer.update(Number(c.req.param('id')), body, user.id) });
   });
 
-  app.post('/api/admin/import/items/:id/skip', async (c) => {
-    await requireAdmin(c);
-    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'skipped') });
+  app.post('/api/import/items/:id/skip', async (c) => {
+    const user = await requireMember(c);
+    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'skipped', user.id) });
   });
 
-  app.post('/api/admin/import/items/:id/restore', async (c) => {
-    await requireAdmin(c);
-    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'pending') });
+  app.post('/api/import/items/:id/restore', async (c) => {
+    const user = await requireMember(c);
+    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'pending', user.id) });
   });
 
-  app.post('/api/admin/import/items/:id/commit', async (c) => {
-    const user = await requireAdmin(c);
+  app.post('/api/import/items/:id/commit', async (c) => {
+    const user = await requireMember(c);
+    if (!importLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
     const body = await c.req.json<{ allowDuplicate?: boolean }>().catch(() => ({}) as { allowDuplicate?: boolean });
     try {
       const { item, ref } = await importer.commit(Number(c.req.param('id')), user, { allowDuplicate: !!body.allowDuplicate });
       return c.json({ item, ref: { id: ref.id, siteUrl: refs.siteUrl(ref) } });
     } catch (err) {
-      if (err instanceof DuplicateError) {
-        return c.json(
-          { error: err.message, code: 'duplicate', matches: err.matches.map((m) => ({ id: m.id, title: m.title, thumbUrl: `/api/refs/${m.id}/thumb` })) },
-          409,
-        );
-      }
+      if (err instanceof DuplicateError) return duplicateResponse(c, err);
       throw err;
     }
   });
 
   // 화면에 보여줄 크기로 줄인 원본 (디스코드 링크는 만료되므로 서버가 받아서 전달)
-  app.get('/api/admin/import/items/:id/image', async (c) => {
-    await requireAdmin(c);
+  app.get('/api/import/items/:id/image', async (c) => {
+    await requireMember(c);
     const id = Number(c.req.param('id'));
     let img = importImages.get(id);
     if (!img) {
@@ -579,6 +651,24 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return c.body(new Uint8Array(img), 200, { 'Content-Type': 'image/webp', 'Cache-Control': 'private, max-age=3600' });
   });
 
+  app.get('/api/import/suggest', async (c) => {
+    await requireMember(c);
+    return c.json({ similar: await importer.suggest(nameField(c.req.query('field')), c.req.query('name') ?? '') });
+  });
+
+  // ── 관리자 전용 ──
+  app.get('/api/admin/import/channels', async (c) => {
+    await requireAdmin(c);
+    return c.json({ channels: await importer.listChannels() });
+  });
+
+  app.post('/api/admin/import/scan', async (c) => {
+    await requireAdmin(c);
+    const body = await c.req.json<{ channelId?: string }>().catch(() => ({}) as { channelId?: string });
+    if (!body.channelId || !/^\d+$/.test(body.channelId)) throw new UserError('채널을 골라 주세요.');
+    return c.json({ scan: importer.startScan(body.channelId) });
+  });
+
   // 태그 붙이는 중에 바로 새 태그 만들기 (디스코드 /관리 태그추가 와 같음)
   app.post('/api/admin/tags', async (c) => {
     const user = await requireAdmin(c);
@@ -590,11 +680,6 @@ export function createApi(ctx: AppContext): Hono<Env> {
   app.get('/api/admin/import/names', async (c) => {
     await requireAdmin(c);
     return c.json({ groups: await importer.similarGroups(nameField(c.req.query('field'))) });
-  });
-
-  app.get('/api/admin/import/suggest', async (c) => {
-    await requireAdmin(c);
-    return c.json({ similar: await importer.suggest(nameField(c.req.query('field')), c.req.query('name') ?? '') });
   });
 
   app.post('/api/admin/import/names/rename', async (c) => {
@@ -623,6 +708,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
             displayName: user.displayName,
             avatarUrl: user.avatarUrl,
             isAdmin: ctx.bot?.isOnline() ? await isAdminUser(user.id) : false,
+            isMember: ctx.bot?.isOnline() ? await isMemberUser(user.id) : false,
             pendingEdits: await ctx.edits.pendingCount(user.id),
           }
         : null,
@@ -659,7 +745,15 @@ export function createApi(ctx: AppContext): Hono<Env> {
     if (res.status !== 'approved' || !res.token) return c.json({ status: res.status });
     const user = await community.userForToken(res.token);
     const userOut = user
-      ? { id: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl, isAdmin: await isAdminUser(user.id) }
+      ? {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+          isAdmin: await isAdminUser(user.id),
+          isMember: await isMemberUser(user.id),
+          pendingEdits: await ctx.edits.pendingCount(user.id),
+        }
       : null;
     if (res.label === 'web') {
       setSessionCookie(c, res.token);

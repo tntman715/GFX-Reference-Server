@@ -166,6 +166,15 @@ export class BotRuntime implements BotBridge {
     await this.archive.removeUserReaction(ref, userId, emoji).catch(() => undefined);
   }
 
+  /** GFX References 디스코드 서버 멤버인지 (사이트에서 올리기 / 가져오기 권한) */
+  async isGuildMember(userId: string): Promise<boolean> {
+    const guildId = this.config.discord.guildId;
+    if (!guildId || !this.client.isReady()) return false;
+    const guild = await this.client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    return !!member;
+  }
+
   async isGuildAdmin(userId: string): Promise<boolean> {
     const guildId = this.config.discord.guildId;
     if (!guildId || !this.client.isReady()) return false;

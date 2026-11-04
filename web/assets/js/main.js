@@ -13,6 +13,7 @@ import { mountImport } from './views/import.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
+import { openUploadForm } from './views/upload.js';
 
 const app = document.getElementById('app');
 let current = { key: null, view: null };
@@ -136,7 +137,7 @@ function renderAccount() {
       t('account.edits'),
       me.pendingEdits ? h('span.badge', String(me.pendingEdits)) : null,
     ),
-    me.isAdmin ? h('a', { href: '#/import', onclick: () => menu.classList.remove('open') }, '레퍼런스 가져오기') : null,
+    me.isMember || me.isAdmin ? h('a', { href: '#/import', onclick: () => menu.classList.remove('open') }, t('account.import')) : null,
     h(
       'button',
       {
@@ -201,6 +202,26 @@ function renderLangSwitch() {
     b.setAttribute('aria-pressed', String(on));
   }
 }
+
+document.getElementById('upload-btn').addEventListener('click', () => openUploadForm({ navigate }));
+
+// ── 그레인 켜기 / 끄기 (이 브라우저에만 기억) ───────────────
+
+const grainBtn = document.getElementById('grain-toggle');
+function renderGrain() {
+  grainBtn.setAttribute('aria-pressed', String(!document.documentElement.classList.contains('no-grain')));
+}
+grainBtn.addEventListener('click', () => {
+  const off = document.documentElement.classList.toggle('no-grain');
+  try {
+    if (off) localStorage.setItem('gfx.grain', 'off');
+    else localStorage.removeItem('gfx.grain');
+  } catch {
+    /* 저장 못 해도 지금 화면에는 적용 */
+  }
+  renderGrain();
+});
+renderGrain();
 
 document.getElementById('lang-switch').addEventListener('click', (e) => {
   const b = e.target.closest('[data-lang]');

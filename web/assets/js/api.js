@@ -45,6 +45,19 @@ export const api = {
   post: (path, body) => request('POST', path, { body: body ?? {} }),
   url,
 
+  /** 파일 올리기 (multipart). FormData 를 그대로 보냄 */
+  async upload(path, form) {
+    const res = await fetch(url(path), { method: 'POST', credentials: 'include', body: form });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      /* 본문 없음 */
+    }
+    if (!res.ok) throw new ApiError(data?.error || t('error.request', { status: res.status }), res.status, data?.code, data);
+    return data;
+  },
+
   /** 원본 다운로드: fetch → blob → 저장 */
   async download(id) {
     const res = await fetch(url(`/api/refs/${id}/original`), { credentials: 'include' });

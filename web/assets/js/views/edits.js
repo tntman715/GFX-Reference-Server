@@ -132,7 +132,9 @@ export function openEditForm(ref, { onDone } = {}) {
 }
 
 function field(label, control, hint) {
-  return h('label.form-field', h('span.form-label', label), control, hint ? h('span.hint', hint) : null);
+  // 버튼 묶음을 label 로 감싸면 글자를 눌렀을 때 첫 버튼이 눌려서, 입력칸일 때만 label
+  const tag = control.matches('input, textarea, select') ? 'label.form-field' : 'div.form-field';
+  return h(tag, h('span.form-label', label), control, hint ? h('span.hint', hint) : null);
 }
 
 /** 제안 내용을 "원래 → 바뀔 값" 줄로 */

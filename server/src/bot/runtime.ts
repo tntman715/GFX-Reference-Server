@@ -16,6 +16,7 @@ import {
   type PartialMessageReaction,
   type PartialUser,
   Partials,
+  PermissionFlagsBits,
   REST,
   Routes,
   type User,
@@ -44,6 +45,7 @@ import { TtlMap } from '../util/ttl-map.js';
 import { DiscordArchive } from './archive.js';
 import { commandsJson } from './commands/definitions.js';
 import { HighlightScheduler } from './highlight.js';
+import { DiscordImportSource } from './import-source.js';
 import { BRAND_COLOR, previewMedia, withUpdatedReactionCounts } from './ui/card.js';
 import { actorOf, ephemeralFlag, replyError, userInfo } from './util.js';
 import { Viewer } from './viewer.js';
@@ -58,6 +60,7 @@ interface PendingUpload {
 export class BotRuntime implements BotBridge {
   readonly client: Client;
   readonly archive: DiscordArchive;
+  readonly importSource: DiscordImportSource;
   readonly viewer: Viewer;
   private pendingUploads = new TtlMap<string, PendingUpload>(10 * 60_000, 200);
   private highlight: HighlightScheduler;
@@ -70,6 +73,7 @@ export class BotRuntime implements BotBridge {
       allowedMentions: { parse: [] },
     });
     this.archive = new DiscordArchive(this.client, ctx.config, (ref) => ctx.refs.siteUrl(ref));
+    this.importSource = new DiscordImportSource(this.client, ctx.config);
     this.viewer = new Viewer(ctx.refs, ctx.config.reactionEmojis);
     this.highlight = new HighlightScheduler(this);
   }
@@ -135,6 +139,11 @@ export class BotRuntime implements BotBridge {
     return { guildName: guild?.name ?? null, botName: this.client.user?.username ?? null };
   }
 
+  async notifyUser(userId: string, content: string): Promise<void> {
+    const user = await this.client.users.fetch(userId);
+    await user.send({ content, allowedMentions: { parse: [] } });
+  }
+
   async sendOriginalDm(userId: string, ref: Reference, file: OriginalFile): Promise<void> {
     const user = await this.client.users.fetch(userId);
     try {
@@ -155,6 +164,16 @@ export class BotRuntime implements BotBridge {
 
   async syncReactionRemoval(ref: Reference, userId: string, emoji: string): Promise<void> {
     await this.archive.removeUserReaction(ref, userId, emoji).catch(() => undefined);
+  }
+
+  async isGuildAdmin(userId: string): Promise<boolean> {
+    const guildId = this.config.discord.guildId;
+    if (!guildId || !this.client.isReady()) return false;
+    const guild = await this.client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return false;
+    if (member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
+    return member.roles.cache.some((r) => this.config.discord.adminRoleIds.includes(r.id));
   }
 
   // ── 라우팅 ──────────────────────────────────────────────
@@ -743,8 +762,14 @@ export class BotRuntime implements BotBridge {
       const all = await this.tagNames();
       choices = all.filter((t) => t.includes(value.toLowerCase())).slice(0, 25).map((t) => ({ name: t, value: t }));
     } else if (focused.name === 'creator') {
-      const names = await this.refs.creators(value, 25);
-      choices = names.map((n) => ({ name: n.slice(0, 100), value: n.slice(0, 100) }));
+      // "A, B" 처럼 여러 명을 적는 중이면 마지막 이름만 찾아서 앞부분에 이어 붙임
+      const cut = value.lastIndexOf(',');
+      const head = cut >= 0 ? `${value.slice(0, cut + 1).trim()} ` : '';
+      const names = await this.refs.creators(value.slice(cut + 1), 25);
+      choices = names
+        .map((n) => head + n)
+        .filter((n) => n.length <= 100)
+        .map((n) => ({ name: n, value: n }));
     } else if (focused.name === 'id') {
       const rows = await this.refs.suggest(value, 25);
       choices = rows.map((r) => ({ name: `#${r.id} · ${r.title} (${CATEGORIES[r.category].shortLabel})`.slice(0, 100), value: r.id }));

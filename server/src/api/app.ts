@@ -18,11 +18,14 @@ import {
 } from '../constants.js';
 import type { AppContext } from '../context.js';
 import type { SearchOptions } from '../repos/references.js';
+import sharp from 'sharp';
 import { toJpegThumb } from '../services/image.js';
+import { DuplicateError } from '../services/references.js';
 import { isSafeKey } from '../storage/types.js';
-import type { UserInfo } from '../types.js';
+import type { EditProposal } from '../services/edits.js';
+import type { Reference, UserInfo } from '../types.js';
 import { avatarUrl } from '../util/discord.js';
-import { NotFoundError, ServiceUnavailableError, UnauthorizedError, UserError } from '../util/errors.js';
+import { ForbiddenError, NotFoundError, ServiceUnavailableError, UnauthorizedError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
 import { RateLimiter } from '../util/rate-limit.js';
 
@@ -75,6 +78,8 @@ export function createApi(ctx: AppContext): Hono<Env> {
   const deviceLimiter = new RateLimiter(10, 60_000);
   const downloadLimiter = new RateLimiter(60, 60_000);
   const reactLimiter = new RateLimiter(60, 60_000);
+  const editLimiter = new RateLimiter(20, 60_000);
+  const boardLimiter = new RateLimiter(120, 60_000);
 
   if (config.corsOrigins.length) {
     app.use(
@@ -295,6 +300,159 @@ export function createApi(ctx: AppContext): Hono<Env> {
     });
   });
 
+  // ── 수정 / 수정 제안 ────────────────────────────────────
+  // 올린 사람과 관리자는 바로 고치고, 다른 사람이 고치면 올린 사람에게 "수정 제안"이 갑니다.
+  const viewerIsAdmin = async (userId: string) => (ctx.bot?.isOnline() ? isAdminUser(userId) : false);
+
+  /** 제안 목록에 레퍼런스 정보(제목, 미리보기)를 붙여서 내보냄 */
+  const publicProposals = async (list: EditProposal[], viewerId?: string) => {
+    const ids = [...new Set(list.map((p) => p.refId))];
+    const found: Reference[] = ids.length ? (await refs.search({ ids, sort: 'ids', limit: ids.length })).items : [];
+    const pub = new Map((await refs.toPublicList(found, viewerId)).map((r) => [r.id, r]));
+    return list.map((p) => ({ ...p, ref: pub.get(p.refId) ?? null }));
+  };
+
+  app.get('/api/refs/:id/proposals', async (c) => {
+    const ref = await refs.require(refIdParam(c));
+    const user = c.get('user');
+    const isAdmin = user ? await viewerIsAdmin(user.id) : false;
+    const canEdit = !!user && refs.canEdit(ref, { id: user.id, isAdmin });
+    const pending = await ctx.edits.pendingFor(ref.id);
+    // 올린 사람/관리자는 모든 제안을, 다른 사람은 내가 보낸 것만
+    const visible = canEdit ? pending : pending.filter((p) => p.proposer.id === user?.id);
+    return c.json({ canEdit, isAdmin, proposals: visible });
+  });
+
+  app.post('/api/refs/:id/edit', async (c) => {
+    const user = requireUser(c);
+    if (!editLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+    const str = (v: unknown) => (v === undefined ? undefined : v === null ? null : String(v));
+    const result = await ctx.edits.submit(
+      refIdParam(c),
+      {
+        title: str(body.title),
+        mapName: str(body.mapName),
+        category: body.category === undefined ? undefined : String(body.category),
+        creators: str(body.creators),
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+        note: str(body.note),
+      },
+      user,
+      await viewerIsAdmin(user.id),
+    );
+    if (result.mode === 'applied') {
+      const [item] = await refs.toPublicList([result.ref], user.id);
+      return c.json({ mode: 'applied', item });
+    }
+    return c.json({ mode: 'proposed', proposal: result.proposal });
+  });
+
+  app.get('/api/edits/received', async (c) => {
+    const user = requireUser(c);
+    const all = c.req.query('all') === '1' && (await viewerIsAdmin(user.id));
+    return c.json({ items: await publicProposals(await ctx.edits.received(user.id, { all }), user.id), all });
+  });
+
+  app.get('/api/edits/sent', async (c) => {
+    const user = requireUser(c);
+    return c.json({ items: await publicProposals(await ctx.edits.sent(user.id), user.id) });
+  });
+
+  app.post('/api/edits/:id/accept', async (c) => {
+    const user = requireUser(c);
+    const { proposal, ref } = await ctx.edits.accept(refIdParam(c), { id: user.id, isAdmin: await viewerIsAdmin(user.id) });
+    const [item] = await refs.toPublicList([ref], user.id);
+    return c.json({ proposal, item });
+  });
+
+  app.post('/api/edits/:id/reject', async (c) => {
+    const user = requireUser(c);
+    const body = await c.req.json<{ reason?: string }>().catch(() => ({}) as { reason?: string });
+    return c.json({ proposal: await ctx.edits.reject(refIdParam(c), { id: user.id, isAdmin: await viewerIsAdmin(user.id) }, body.reason) });
+  });
+
+  app.post('/api/edits/:id/cancel', async (c) => {
+    const user = requireUser(c);
+    return c.json({ proposal: await ctx.edits.cancel(refIdParam(c), user.id) });
+  });
+
+  // ── 보드 ────────────────────────────────────────────────
+  /** 보드 목록에 표지 이미지 주소를 붙임 */
+  const publicBoards = async <T extends { coverIds: number[] }>(list: T[]) => {
+    const ids = [...new Set(list.flatMap((b) => b.coverIds))];
+    const found: Reference[] = ids.length ? (await refs.search({ ids, sort: 'ids', limit: Math.min(ids.length, 100) })).items : [];
+    const byId = new Map(found.map((r) => [r.id, r]));
+    return list.map((b) => ({
+      ...b,
+      covers: b.coverIds
+        .map((id) => byId.get(id))
+        .filter((r): r is Reference => !!r)
+        .map((r) => ({ id: r.id, url: refs.previewUrl(r), color: r.palette[0]?.hex ?? null })),
+    }));
+  };
+
+  app.get('/api/boards', async (c) => {
+    const viewer = c.get('user');
+    const owner = c.req.query('owner') || viewer?.id;
+    if (!owner) throw new UnauthorizedError();
+    const refQuery = c.req.query('ref');
+    const refId = owner === viewer?.id && refQuery ? intParam(refQuery, 0, 0, 2 ** 31 - 1) || undefined : undefined;
+    return c.json({ items: await publicBoards(await ctx.boards.listByOwner(owner, refId)) });
+  });
+
+  app.post('/api/boards', async (c) => {
+    const user = requireUser(c);
+    if (!boardLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ name?: string; refId?: number }>().catch(() => ({}) as { name?: string; refId?: number });
+    let board = await ctx.boards.create(user, body.name);
+    if (body.refId) board = await ctx.boards.setItem(board.id, user.id, Number(body.refId), true);
+    const [item] = await publicBoards([board]);
+    return c.json({ item });
+  });
+
+  app.get('/api/boards/:id', async (c) => {
+    const [item] = await publicBoards([await ctx.boards.require(refIdParam(c))]);
+    return c.json({ item });
+  });
+
+  app.get('/api/boards/:id/refs', async (c) => {
+    const pageSize = intParam(c.req.query('limit'), 24, 1, 60);
+    const page = intParam(c.req.query('page'), 1, 1, 10_000);
+    const offset = (page - 1) * pageSize;
+    const { items, total } = await ctx.boards.items(refIdParam(c), pageSize, offset);
+    return c.json({
+      items: await refs.toPublicList(items, c.get('user')?.id),
+      total,
+      page,
+      pageSize,
+      hasMore: offset + items.length < total,
+    });
+  });
+
+  app.post('/api/boards/:id', async (c) => {
+    const user = requireUser(c);
+    const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string });
+    const [item] = await publicBoards([await ctx.boards.rename(refIdParam(c), user.id, body.name)]);
+    return c.json({ item });
+  });
+
+  app.post('/api/boards/:id/delete', async (c) => {
+    const user = requireUser(c);
+    await ctx.boards.delete(refIdParam(c), user.id);
+    return c.json({ ok: true });
+  });
+
+  app.post('/api/boards/:id/items', async (c) => {
+    const user = requireUser(c);
+    if (!boardLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ refId?: number; on?: boolean }>().catch(() => ({}) as { refId?: number; on?: boolean });
+    const refId = Number(body.refId);
+    if (!Number.isInteger(refId) || refId <= 0) throw new UserError('레퍼런스 번호가 필요해요.');
+    const [item] = await publicBoards([await ctx.boards.setItem(refIdParam(c), user.id, refId, body.on !== false)]);
+    return c.json({ item });
+  });
+
   // ── 점수 / 프로필 ───────────────────────────────────────
   app.get('/api/leaderboard', async (c) => {
     const page = intParam(c.req.query('page'), 1, 1, 1000);
@@ -315,10 +473,160 @@ export function createApi(ctx: AppContext): Hono<Env> {
     });
   });
 
+  // ── 관리자: 예전 채팅 채널에서 레퍼런스 옮겨오기 ─────────
+  // 관리자 여부는 디스코드 서버 권한으로 판단 (봇에게 물어보고 잠깐 기억)
+  const adminCache = new Map<string, { ok: boolean; at: number }>();
+  const isAdminUser = async (userId: string): Promise<boolean> => {
+    const hit = adminCache.get(userId);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.ok;
+    if (!ctx.bot?.isGuildAdmin) return false;
+    const ok = await ctx.bot.isGuildAdmin(userId).catch(() => false);
+    adminCache.set(userId, { ok, at: Date.now() });
+    return ok;
+  };
+  const requireAdmin = async (c: Context<Env>): Promise<AuthedUser> => {
+    const user = requireUser(c);
+    if (!ctx.bot?.isOnline()) throw new ServiceUnavailableError('디스코드 봇이 오프라인이라 관리자 확인을 할 수 없어요.');
+    if (!(await isAdminUser(user.id))) throw new ForbiddenError('서버 관리자만 사용할 수 있어요.');
+    return user;
+  };
+  const importer = ctx.importer;
+  const importImages = new Map<number, Buffer>();
+  // 관리자 화면에서 실패한 요청은 서버 기록에 남김 (화면 알림은 금방 사라지므로)
+  app.use('/api/admin/*', async (c, next) => {
+    await next();
+    if (c.res.status >= 400) {
+      const body = (await c.res
+        .clone()
+        .json()
+        .catch(() => null)) as { error?: string } | null;
+      log.warn(`${c.req.method} ${c.req.path} → ${c.res.status}${body?.error ? ` · ${body.error.split('\n')[0]}` : ''}`);
+    }
+  });
+  const nameField = (v: string | undefined) => (v === 'map' ? 'map' : 'creator');
+
+  app.get('/api/admin/import/status', async (c) => {
+    await requireAdmin(c);
+    return c.json({ counts: await importer.counts(), scan: importer.scanState(), guildId: config.discord.guildId ?? null });
+  });
+
+  app.get('/api/admin/import/channels', async (c) => {
+    await requireAdmin(c);
+    return c.json({ channels: await importer.listChannels() });
+  });
+
+  app.post('/api/admin/import/scan', async (c) => {
+    await requireAdmin(c);
+    const body = await c.req.json<{ channelId?: string }>().catch(() => ({}) as { channelId?: string });
+    if (!body.channelId || !/^\d+$/.test(body.channelId)) throw new UserError('채널을 골라 주세요.');
+    return c.json({ scan: importer.startScan(body.channelId) });
+  });
+
+  app.get('/api/admin/import/items', async (c) => {
+    await requireAdmin(c);
+    const status = c.req.query('status');
+    return c.json({ items: await importer.list(status === 'skipped' || status === 'imported' ? status : 'pending') });
+  });
+
+  app.post('/api/admin/import/items/:id', async (c) => {
+    await requireAdmin(c);
+    const body = await c.req.json<Parameters<typeof importer.update>[1]>().catch(() => ({}));
+    return c.json({ item: await importer.update(Number(c.req.param('id')), body) });
+  });
+
+  app.post('/api/admin/import/items/:id/skip', async (c) => {
+    await requireAdmin(c);
+    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'skipped') });
+  });
+
+  app.post('/api/admin/import/items/:id/restore', async (c) => {
+    await requireAdmin(c);
+    return c.json({ item: await importer.setStatus(Number(c.req.param('id')), 'pending') });
+  });
+
+  app.post('/api/admin/import/items/:id/commit', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ allowDuplicate?: boolean }>().catch(() => ({}) as { allowDuplicate?: boolean });
+    try {
+      const { item, ref } = await importer.commit(Number(c.req.param('id')), user, { allowDuplicate: !!body.allowDuplicate });
+      return c.json({ item, ref: { id: ref.id, siteUrl: refs.siteUrl(ref) } });
+    } catch (err) {
+      if (err instanceof DuplicateError) {
+        return c.json(
+          { error: err.message, code: 'duplicate', matches: err.matches.map((m) => ({ id: m.id, title: m.title, thumbUrl: `/api/refs/${m.id}/thumb` })) },
+          409,
+        );
+      }
+      throw err;
+    }
+  });
+
+  // 화면에 보여줄 크기로 줄인 원본 (디스코드 링크는 만료되므로 서버가 받아서 전달)
+  app.get('/api/admin/import/items/:id/image', async (c) => {
+    await requireAdmin(c);
+    const id = Number(c.req.param('id'));
+    let img = importImages.get(id);
+    if (!img) {
+      const { file } = await importer.original(id);
+      img = await sharp(file.buffer, { animated: false })
+        .rotate()
+        .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toBuffer();
+      importImages.set(id, img);
+      if (importImages.size > 200) importImages.delete(importImages.keys().next().value!);
+    }
+    return c.body(new Uint8Array(img), 200, { 'Content-Type': 'image/webp', 'Cache-Control': 'private, max-age=3600' });
+  });
+
+  // 태그 붙이는 중에 바로 새 태그 만들기 (디스코드 /관리 태그추가 와 같음)
+  app.post('/api/admin/tags', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ name?: string; description?: string }>().catch(() => ({}) as { name?: string; description?: string });
+    const tag = await community.addTag(String(body.name ?? ''), body.description ?? null, { id: user.id, isAdmin: true });
+    return c.json({ tag });
+  });
+
+  app.get('/api/admin/import/names', async (c) => {
+    await requireAdmin(c);
+    return c.json({ groups: await importer.similarGroups(nameField(c.req.query('field'))) });
+  });
+
+  app.get('/api/admin/import/suggest', async (c) => {
+    await requireAdmin(c);
+    return c.json({ similar: await importer.suggest(nameField(c.req.query('field')), c.req.query('name') ?? '') });
+  });
+
+  app.post('/api/admin/import/names/rename', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ field?: string; from?: string[]; to?: string }>().catch(() => ({}) as { field?: string; from?: string[]; to?: string });
+    if (!Array.isArray(body.from) || !body.from.length) throw new UserError('바꿀 이름을 골라 주세요.');
+    return c.json(await importer.renameAll(nameField(body.field), body.from.map(String), String(body.to ?? ''), { id: user.id, isAdmin: true }));
+  });
+
+  app.post('/api/admin/import/names/ignore', async (c) => {
+    await requireAdmin(c);
+    const body = await c.req.json<{ field?: string; names?: string[] }>().catch(() => ({}) as { field?: string; names?: string[] });
+    if (!Array.isArray(body.names) || body.names.length < 2) throw new UserError('이름 묶음이 필요해요.');
+    await importer.ignoreGroup(nameField(body.field), body.names.map(String));
+    return c.json({ ok: true });
+  });
+
   // ── 로그인 ──────────────────────────────────────────────
-  app.get('/api/auth/me', (c) => {
+  app.get('/api/auth/me', async (c) => {
     const user = c.get('user');
-    return c.json({ user: user ? { id: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl } : null });
+    return c.json({
+      user: user
+        ? {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
+            isAdmin: ctx.bot?.isOnline() ? await isAdminUser(user.id) : false,
+            pendingEdits: await ctx.edits.pendingCount(user.id),
+          }
+        : null,
+    });
   });
 
   app.post('/api/auth/logout', async (c) => {
@@ -350,7 +658,9 @@ export function createApi(ctx: AppContext): Hono<Env> {
     const res = await community.pollDeviceCode(body.deviceCode);
     if (res.status !== 'approved' || !res.token) return c.json({ status: res.status });
     const user = await community.userForToken(res.token);
-    const userOut = user ? { id: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl } : null;
+    const userOut = user
+      ? { id: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl, isAdmin: await isAdminUser(user.id) }
+      : null;
     if (res.label === 'web') {
       setSessionCookie(c, res.token);
       return c.json({ status: 'approved', user: userOut });
@@ -459,7 +769,8 @@ export function createApi(ctx: AppContext): Hono<Env> {
       const ext = path.extname(f);
       return c.body(new Uint8Array(data), 200, {
         'Content-Type': MIME[ext] ?? 'application/octet-stream',
-        'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+        // 코드(html/js/css)는 고치면 바로 반영되도록 매번 확인, 이미지 · 글꼴만 1시간 보관
+        'Cache-Control': ext === '.html' || ext === '.js' || ext === '.mjs' || ext === '.css' ? 'no-cache' : 'public, max-age=3600',
       });
     };
     try {

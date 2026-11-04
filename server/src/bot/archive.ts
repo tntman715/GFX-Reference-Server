@@ -17,6 +17,34 @@ import { creatorLine, hexToInt, paletteLine, tagLine } from './ui/card.js';
 
 const log = logger('archive');
 
+type ArchiveMessageLike = Pick<Message, 'attachments' | 'embeds'>;
+
+/**
+ * 아카이브 메시지에서 원본 파일 위치를 찾습니다.
+ * 임베드가 `attachment://이름` 으로 첨부파일을 이미지로 쓰면, 디스코드는 그 파일을
+ * 첨부파일 목록에서 빼고 임베드 이미지(원본 그대로의 CDN 주소)로만 돌려줍니다.
+ */
+export function archivedFile(msg: ArchiveMessageLike): { url: string; name: string; contentType: string | null } | null {
+  const att = msg.attachments.first();
+  if (att) return { url: att.url, name: att.name, contentType: att.contentType };
+  for (const embed of msg.embeds) {
+    const url = embed.image?.url;
+    if (!url) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    // 원본이 아닌 외부 이미지·미리보기 주소는 쓰지 않음
+    if (parsed.hostname !== 'cdn.discordapp.com' || !parsed.pathname.startsWith('/attachments/')) continue;
+    const name = decodeURIComponent(parsed.pathname.split('/').pop() ?? '');
+    if (!name) continue;
+    return { url, name, contentType: null };
+  }
+  return null;
+}
+
 /**
  * 디스코드 아카이브 채널을 원본 저장소로 사용합니다.
  * 봇이 원본을 첨부한 메시지를 올리고, 다운로드할 때는 그 메시지에서 새 첨부파일 URL 을 받아옵니다.
@@ -117,8 +145,10 @@ export class DiscordArchive implements OriginalArchive {
   async refresh(ref: Reference): Promise<void> {
     const msg = await this.message(ref);
     if (!msg) return;
-    const att = msg.attachments.first();
-    await msg.edit({ embeds: [this.embed(ref, att?.name ?? 'image.png')], components: [this.linkRow(ref)], allowedMentions: { parse: [] } });
+    const original = archivedFile(msg);
+    // 파일 이름을 못 찾으면 임베드를 다시 쓰지 않음 (잘못된 이름을 쓰면 임베드에서 이미지가 빠짐)
+    if (!original) return void log.warn(`#${ref.id} 아카이브 메시지에서 원본을 찾지 못해 갱신하지 않았습니다.`);
+    await msg.edit({ embeds: [this.embed(ref, original.name)], components: [this.linkRow(ref)], allowedMentions: { parse: [] } });
     // 분류가 바뀌어 다른 채널로 가야 하면 그대로 둠 (원본 위치는 유지)
   }
 
@@ -126,14 +156,14 @@ export class DiscordArchive implements OriginalArchive {
     const hit = this.cache.get(ref.id);
     if (hit) return hit.file;
     const msg = await this.message(ref);
-    const att = msg?.attachments.first();
-    if (!att) return null;
-    const res = await fetch(att.url);
+    const original = msg ? archivedFile(msg) : null;
+    if (!original) return null;
+    const res = await fetch(original.url);
     if (!res.ok) throw new Error(`원본 다운로드 실패 (${res.status})`);
     const file: OriginalFile = {
       data: Buffer.from(await res.arrayBuffer()),
-      contentType: att.contentType ?? ref.originalMime,
-      filename: att.name,
+      contentType: original.contentType ?? ref.originalMime,
+      filename: original.name,
     };
     this.remember(ref.id, file);
     return file;

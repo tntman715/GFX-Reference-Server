@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { emptyState, ResultsGrid } from '../components.js';
+import { emptyState, ResultsGrid, saveButton } from '../components.js';
 import { clear, debounce, fmtRelative, h } from '../dom.js';
 import { t } from '../i18n.js';
 
@@ -142,7 +142,7 @@ function videoCard(ref) {
   const card = h(
     'a.yt-card',
     { href: `#/ref/${ref.id}`, title },
-    h('div.yt-thumb', { style: { background: color } }, img, h('span.yt-badge', `#${ref.id}`)),
+    h('div.yt-thumb', { style: { background: color } }, img, saveButton(ref), h('span.yt-badge', `#${ref.id}`)),
     h(
       'div.yt-info',
       h('span.yt-avatar', { style: { background: color, color: textOn(color) }, 'aria-hidden': 'true' }, initial(channel)),

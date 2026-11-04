@@ -57,7 +57,8 @@ export function paletteLine(ref: Reference): string {
 }
 
 export function creatorLine(ref: Reference): string {
-  return ref.creatorId ? `<@${ref.creatorId}> (${ref.creatorName})` : ref.creatorName;
+  const list = ref.creators?.length ? ref.creators : [{ name: ref.creatorName, id: ref.creatorId }];
+  return list.map((c) => (c.id ? `<@${c.id}> (${c.name})` : c.name)).join(', ');
 }
 
 export function refEmbed(refs: ReferenceService, ref: Reference, imageUrl: string, footerExtra?: string): EmbedBuilder {

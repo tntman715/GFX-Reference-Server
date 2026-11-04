@@ -3,10 +3,12 @@ import { t } from './i18n.js';
 const BASE = (window.GFX_CONFIG?.apiBase || '').replace(/\/+$/, '');
 
 export class ApiError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, data = null) {
     super(message);
     this.status = status;
     this.code = code;
+    /** 오류 응답 본문 전체 (예: 중복일 때 비슷한 레퍼런스 목록) */
+    this.data = data;
   }
 }
 
@@ -34,7 +36,7 @@ async function request(method, path, { params, body } = {}) {
   } catch {
     /* 본문 없음 */
   }
-  if (!res.ok) throw new ApiError(data?.error || t('error.request', { status: res.status }), res.status, data?.code);
+  if (!res.ok) throw new ApiError(data?.error || t('error.request', { status: res.status }), res.status, data?.code, data);
   return data;
 }
 

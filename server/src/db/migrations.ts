@@ -119,6 +119,82 @@ ${DEFAULT_TAGS.map(
 ).join('\n')}
 `,
   },
+  {
+    id: 2,
+    name: 'import_items',
+    sql: `
+-- 예전에 채팅 채널(gdfx 등)에 손으로 올리던 레퍼런스를 옮겨오기 위한 후보 목록.
+-- 첨부파일 하나가 후보 하나이고, 관리자가 태그를 붙여 저장하면 refs 로 들어갑니다.
+CREATE TABLE import_items (
+  id             SERIAL PRIMARY KEY,
+  channel_id     TEXT NOT NULL,
+  message_id     TEXT NOT NULL,
+  attachment_id  TEXT NOT NULL UNIQUE,
+  author_id      TEXT,
+  author_name    TEXT,
+  posted_at      TIMESTAMPTZ NOT NULL,
+  content        TEXT NOT NULL DEFAULT '',
+  filename       TEXT NOT NULL,
+  content_type   TEXT,
+  size           INTEGER,
+  width          INTEGER,
+  height         INTEGER,
+  map_name       TEXT,
+  creator_name   TEXT,
+  creator_id     TEXT,
+  category       TEXT NOT NULL DEFAULT 'gm_thumbnail' CHECK (category IN ('gm_thumbnail', 'gm_artwork', 'non_gm')),
+  tags           JSONB NOT NULL DEFAULT '[]',
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'imported', 'skipped')),
+  ref_id         INTEGER REFERENCES refs(id) ON DELETE SET NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX import_items_status_idx ON import_items (status, posted_at);
+`,
+  },
+  {
+    id: 3,
+    name: 'creators_proposals_boards',
+    sql: `
+-- 여러 사람이 함께 만든 작품: [{ "name": "...", "id": "디스코드 ID 또는 null" }, ...]
+-- creator_name 은 검색/정렬용으로 이름을 ", " 로 이은 값, creator_id 는 첫 제작자의 ID 로 계속 맞춰 둡니다.
+ALTER TABLE refs ADD COLUMN creators JSONB NOT NULL DEFAULT '[]';
+UPDATE refs SET creators = jsonb_build_array(jsonb_build_object('name', creator_name, 'id', creator_id));
+
+-- 올린 사람이 아닌 사람이 보낸 수정 제안. 올린 사람(또는 관리자)이 받아들이면 바뀝니다.
+CREATE TABLE edit_proposals (
+  id           SERIAL PRIMARY KEY,
+  ref_id       INTEGER NOT NULL REFERENCES refs(id) ON DELETE CASCADE,
+  proposer_id  TEXT NOT NULL REFERENCES users(discord_id),
+  changes      JSONB NOT NULL,
+  before       JSONB NOT NULL DEFAULT '{}',
+  note         TEXT,
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'cancelled')),
+  decided_by   TEXT,
+  decided_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX edit_proposals_ref_idx ON edit_proposals (ref_id, status);
+CREATE INDEX edit_proposals_proposer_idx ON edit_proposals (proposer_id, status);
+
+-- 개인 보드: 마음에 드는 레퍼런스를 이름 붙인 묶음으로 모아 보기
+CREATE TABLE boards (
+  id          SERIAL PRIMARY KEY,
+  owner_id    TEXT NOT NULL REFERENCES users(discord_id),
+  name        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_id, name)
+);
+CREATE TABLE board_items (
+  board_id  INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  ref_id    INTEGER NOT NULL REFERENCES refs(id) ON DELETE CASCADE,
+  added_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (board_id, ref_id)
+);
+CREATE INDEX board_items_ref_idx ON board_items (ref_id);
+`,
+  },
 ];
 
 function sqlString(s: string): string {

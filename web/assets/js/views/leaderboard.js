@@ -24,7 +24,7 @@ export function mountLeaderboard(root, params, { navigate }) {
     clear(body).append(spinner());
     try {
       const data = await api.get('/api/leaderboard', { page, limit: 20 });
-      rules.textContent = t('ranking.rules', { u: data.scoring.pointsPerUpload, r: reactionRules(data.scoring) });
+      rules.textContent = `${t('ranking.rules', { u: data.scoring.pointsPerUpload, r: reactionRules(data.scoring) })} · ${t('ranking.edits', { e: data.scoring.pointsPerEdit })}`;
       clear(body);
       if (!data.rows.length) {
         body.append(emptyState(t('ranking.empty')));

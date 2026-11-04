@@ -42,6 +42,7 @@ export function refCard(ref, { rank } = {}) {
       'div.card-media',
       { style: { aspectRatio: `${ref.preview.width} / ${ref.preview.height}`, background: ref.palette[0]?.hex ?? '#111' } },
       img,
+      saveButton(ref),
       h('span.card-badge', { class: catIndex >= 0 ? `c${catIndex % 3}` : '' }, categoryLabel(cat, true)),
       rank !== undefined ? h('span.card-rank', { class: rank <= 3 ? `r${rank}` : '' }, String(rank)) : null,
     ),
@@ -198,9 +199,9 @@ export function emptyState(text, extra) {
 
 // ── 오버레이 ───────────────────────────────────────────
 
-export function openOverlay(content, { onClose, small = false } = {}) {
+export function openOverlay(content, { onClose, small = false, className = '' } = {}) {
   const root = document.getElementById('overlay-root');
-  const sheet = h('div.sheet', { class: small ? 'small' : '' });
+  const sheet = h('div.sheet', { class: [small ? 'small' : '', className].filter(Boolean).join(' ') });
   const overlay = h('div.overlay', { role: 'dialog', 'aria-modal': 'true' }, sheet);
   let closed = false;
   const close = () => {
@@ -349,4 +350,125 @@ export function handleApiError(err) {
     return;
   }
   toast(err.message || t('error.generic'), 'error');
+}
+
+// ── 보드 ───────────────────────────────────────────────
+
+const SAVE_ICON =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg>';
+
+/** 카드 위에 얹는 "보드에 저장" 버튼 (카드 링크로 이동하지 않음) */
+export function saveButton(ref) {
+  return h('button.card-save', {
+    type: 'button',
+    title: t('board.save'),
+    'aria-label': t('board.save'),
+    html: SAVE_ICON,
+    onclick: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openBoardPicker(ref);
+    },
+  });
+}
+
+/** 보드 고르기 창: 내 보드 목록에서 넣고 빼기, 새 보드 만들기 */
+export function openBoardPicker(ref, { onChange } = {}) {
+  if (!requireLogin(t('board.loginToSave'))) return;
+  openOverlay(
+    () => {
+      const list = h('div.picker-list', spinner());
+      const input = h('input.form-input', { type: 'text', maxlength: 40, placeholder: t('board.newPlaceholder') });
+      const createBtn = h('button.btn.primary', { type: 'submit' }, t('board.create'));
+      const form = h(
+        'form.picker-new',
+        {
+          onsubmit: async (e) => {
+            e.preventDefault();
+            const name = input.value.trim();
+            if (!name) return input.focus();
+            createBtn.disabled = true;
+            try {
+              const { item } = await api.post('/api/boards', { name, refId: ref.id });
+              toast(t('board.created', { name: item.name }), 'ok');
+              input.value = '';
+              onChange?.();
+              await load();
+            } catch (err) {
+              handleApiError(err);
+            } finally {
+              createBtn.disabled = false;
+            }
+          },
+        },
+        input,
+        createBtn,
+      );
+
+      async function load() {
+        try {
+          const { items } = await api.get('/api/boards', { ref: ref.id });
+          clear(list);
+          if (!items.length) list.append(h('p.muted.picker-none', t('board.none')));
+          for (const b of items) list.append(row(b));
+        } catch (err) {
+          clear(list).append(h('p.muted', err.message));
+        }
+      }
+
+      function row(b) {
+        let has = !!b.has;
+        const count = h('span.faint', t('board.count', { n: b.count.toLocaleString() }));
+        const btn = h(
+          'button.picker-item',
+          {
+            type: 'button',
+            class: has ? 'on' : '',
+            'aria-pressed': String(has),
+            onclick: async () => {
+              btn.disabled = true;
+              try {
+                const { item } = await api.post(`/api/boards/${b.id}/items`, { refId: ref.id, on: !has });
+                has = !has;
+                btn.classList.toggle('on', has);
+                btn.setAttribute('aria-pressed', String(has));
+                count.textContent = t('board.count', { n: item.count.toLocaleString() });
+                toast(t(has ? 'board.added' : 'board.removed', { name: b.name }), 'ok');
+                onChange?.();
+              } catch (err) {
+                handleApiError(err);
+              } finally {
+                btn.disabled = false;
+              }
+            },
+          },
+          boardCover(b, 'sm'),
+          h('span.picker-name', h('b', b.name), count),
+          h('span.picker-check', { 'aria-hidden': 'true' }),
+        );
+        return btn;
+      }
+
+      load();
+      setTimeout(() => input.focus(), 50);
+      return h(
+        'div.picker',
+        h('h3', 'Save to board'),
+        h('p.muted', `#${ref.id} ${ref.title} — ${t('board.pickerHint')}`),
+        list,
+        form,
+      );
+    },
+    { className: 'panel' },
+  );
+}
+
+/** 보드 표지: 최근에 넣은 썸네일 최대 4장 */
+export function boardCover(board, size = '') {
+  const covers = board.covers ?? [];
+  return h(
+    'span.board-cover',
+    { class: [size, `n${Math.min(covers.length, 4)}`].filter(Boolean).join(' ') },
+    covers.slice(0, 4).map((c) => h('img', { src: c.url, alt: '', loading: 'lazy', style: { background: c.color ?? '#111' } })),
+  );
 }

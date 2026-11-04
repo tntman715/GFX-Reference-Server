@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { archivedFile } from '../src/bot/archive.js';
 import { commandsJson } from '../src/bot/commands/definitions.js';
 import { weekKey } from '../src/bot/highlight.js';
 import { discordCanFetch, withUpdatedReactionCounts } from '../src/bot/ui/card.js';
@@ -97,5 +98,25 @@ describe('봇 UI 도우미', () => {
     expect(weekKey(new Date('2026-11-08T15:00:00Z'), 'Asia/Seoul')).toBe('2026-11-09'); // 월요일 00:00 KST
     expect(weekKey(new Date('2026-11-01T20:00:00Z'), 'Asia/Seoul')).toBe('2026-11-02'); // 월 05:00 KST
     expect(weekKey(new Date('2026-11-01T20:00:00Z'), 'UTC')).toBe('2026-10-26'); // 일요일 UTC
+  });
+});
+
+describe('아카이브 메시지에서 원본 찾기', () => {
+  const att = (list: any[]) => ({ first: () => list[0] });
+  const cdn = 'https://cdn.discordapp.com/attachments/1/2/ref-5.png?ex=1&is=2&hm=3';
+
+  it('첨부파일이 있으면 첨부파일', () => {
+    const f = archivedFile({ attachments: att([{ url: 'https://cdn.discordapp.com/attachments/1/9/a.png', name: 'a.png', contentType: 'image/png' }]), embeds: [] } as any);
+    expect(f).toEqual({ url: 'https://cdn.discordapp.com/attachments/1/9/a.png', name: 'a.png', contentType: 'image/png' });
+  });
+
+  it('임베드 이미지로 들어간 원본도 찾음 (디스코드가 첨부파일 목록에서 뺀 경우)', () => {
+    const f = archivedFile({ attachments: att([]), embeds: [{ image: { url: cdn } }] } as any);
+    expect(f).toEqual({ url: cdn, name: 'ref-5.png', contentType: null });
+  });
+
+  it('원본이 아닌 이미지 주소는 무시', () => {
+    expect(archivedFile({ attachments: att([]), embeds: [{ image: { url: 'https://media.discordapp.net/attachments/1/2/ref-5.png?width=400' } }] } as any)).toBeNull();
+    expect(archivedFile({ attachments: att([]), embeds: [{ image: { url: 'https://example.com/x.png' } }, {}] } as any)).toBeNull();
   });
 });

@@ -3,10 +3,13 @@ import { discordIcon, handleApiError, openLogin } from './components.js';
 import { avatarSrc, clear, h, spinner, splitText, toast } from './dom.js';
 import { applyStatic, getLang, onLangChange, setLang, t } from './i18n.js';
 import { store } from './store.js';
+import { mountBoard, mountBoards } from './views/boards.js';
 import { mountColors } from './views/colors.js';
 import { openDetail } from './views/detail.js';
+import { mountEdits } from './views/edits.js';
 import { mountExplore } from './views/explore.js';
 import { mountFeed } from './views/feed.js';
+import { mountImport } from './views/import.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
@@ -39,6 +42,10 @@ function matchView(path) {
   if (path === '/popular') return { key: 'popular', mount: mountPopular };
   if (path === '/colors') return { key: 'colors', mount: mountColors };
   if (path === '/leaderboard') return { key: 'leaderboard', mount: mountLeaderboard };
+  if (path === '/import') return { key: 'import', mount: mountImport };
+  if (path === '/boards') return { key: 'boards', mount: mountBoards };
+  if (path === '/edits') return { key: 'edits', mount: mountEdits };
+  if ((m = /^\/board\/(\d+)$/.exec(path))) return { key: `board:${m[1]}`, nav: 'boards', mount: mountBoard, extra: { id: m[1] } };
   if ((m = /^\/user\/(\d+)$/.exec(path))) return { key: `user:${m[1]}`, nav: 'leaderboard', mount: mountProfile, extra: { id: m[1] } };
   return null;
 }
@@ -122,6 +129,14 @@ function renderAccount() {
     'div.menu',
     h('div.menu-head', t('account.hello', { name: me.displayName || me.username })),
     h('a', { href: `#/user/${me.id}`, onclick: () => menu.classList.remove('open') }, t('account.profile')),
+    h('a', { href: '#/boards', onclick: () => menu.classList.remove('open') }, t('account.boards')),
+    h(
+      'a',
+      { href: '#/edits', onclick: () => menu.classList.remove('open') },
+      t('account.edits'),
+      me.pendingEdits ? h('span.badge', String(me.pendingEdits)) : null,
+    ),
+    me.isAdmin ? h('a', { href: '#/import', onclick: () => menu.classList.remove('open') }, '레퍼런스 가져오기') : null,
     h(
       'button',
       {
@@ -144,6 +159,7 @@ function renderAccount() {
       },
     },
     h('img.avatar', { src: avatarSrc(me.avatarUrl), alt: me.username }),
+    me.pendingEdits ? h('span.badge.dot', { title: t('account.edits') }, String(me.pendingEdits)) : null,
   );
   root.append(h('div.account', btn, menu));
 }

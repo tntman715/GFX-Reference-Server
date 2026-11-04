@@ -41,8 +41,8 @@ export function buildCommands() {
         .addChoices(...categoryChoices),
     )
     .addStringOption((o) => ko(o, 'map', '맵이름', '맵 이름 (지메 썸네일은 필수)').setMaxLength(100))
-    .addStringOption((o) => ko(o, 'creator', '제작자', '작업물 제작자 이름 (비우면 내 이름)').setMaxLength(64).setAutocomplete(true))
-    .addUserOption((o) => ko(o, 'creator_user', '제작자멘션', '제작자가 서버 멤버라면 선택하세요'))
+    .addStringOption((o) => ko(o, 'creator', '제작자', '제작자 이름 (비우면 내 이름 · 여러 명이면 쉼표로: A, B)').setMaxLength(300).setAutocomplete(true))
+    .addUserOption((o) => ko(o, 'creator_user', '제작자멘션', '(첫) 제작자가 서버 멤버라면 선택하세요'))
     .addStringOption((o) => ko(o, 'tags', '태그', '쉼표로 구분 (예: glow, grunge, 3d)').setMaxLength(300).setAutocomplete(true))
     .addStringOption((o) => ko(o, 'title', '제목', '사진 이름 (비우면 맵 이름 또는 파일 이름)').setMaxLength(100));
 
@@ -105,8 +105,8 @@ export function buildCommands() {
     .addIntegerOption((o) => ko(o, 'id', '번호', '레퍼런스 번호').setRequired(true).setMinValue(1).setAutocomplete(true))
     .addStringOption((o) => ko(o, 'title', '제목', '새 제목').setMaxLength(100))
     .addStringOption((o) => ko(o, 'map', '맵이름', '새 맵 이름').setMaxLength(100))
-    .addStringOption((o) => ko(o, 'creator', '제작자', '새 제작자 이름').setMaxLength(64).setAutocomplete(true))
-    .addUserOption((o) => ko(o, 'creator_user', '제작자멘션', '제작자 (서버 멤버)'))
+    .addStringOption((o) => ko(o, 'creator', '제작자', '새 제작자 (여러 명이면 쉼표로: A, B)').setMaxLength(300).setAutocomplete(true))
+    .addUserOption((o) => ko(o, 'creator_user', '제작자멘션', '(첫) 제작자 (서버 멤버)'))
     .addStringOption((o) => ko(o, 'category', '분류', '새 분류').addChoices(...categoryChoices))
     .addStringOption((o) => ko(o, 'tags', '태그', '태그 전체 교체 (쉼표로 구분, "-" 는 모두 지우기)').setAutocomplete(true))
     .addStringOption((o) => ko(o, 'add_tags', '태그추가', '추가할 태그').setAutocomplete(true))

@@ -8,7 +8,10 @@ import type { AppContext, BotBridge } from '../src/context.js';
 import { type Db, openDb } from '../src/db/index.js';
 import { DEFAULT_TAGS } from '../src/constants.js';
 import { migrate } from '../src/db/migrate.js';
+import { BoardService } from '../src/services/boards.js';
 import { CommunityService } from '../src/services/community.js';
+import { EditService } from '../src/services/edits.js';
+import { ImportService } from '../src/services/importer.js';
 import { ReferenceService } from '../src/services/references.js';
 import { LocalStorage } from '../src/storage/local.js';
 import type { UserInfo } from '../src/types.js';
@@ -22,7 +25,7 @@ async function freshDb(): Promise<Db> {
     await migrate(sharedDb);
   }
   await sharedDb.exec(`
-    TRUNCATE refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
+    TRUNCATE board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
     ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (name, description, created_by) VALUES ('${t.name}', '${t.description}', 'system');`).join('\n')}
   `);
   return sharedDb;
@@ -45,7 +48,15 @@ export async function makeContext(env: Record<string, string> = {}, bot: BotBrid
   const archive = new LocalArchive(path.join(tmp, 'originals'));
   const refs = new ReferenceService(db, storage, archive, config);
   const community = new CommunityService(db, config);
-  return { config, db, storage, refs, community, bot, tmp };
+  const ctx = { config, db, storage, refs, community, bot, tmp, importer: null! as ImportService, edits: null! as EditService, boards: new BoardService(db) };
+  ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
+  ctx.edits = new EditService(
+    db,
+    refs,
+    () => (ctx.bot?.notifyUser ? ctx.bot.notifyUser.bind(ctx.bot) : null),
+    (p) => `${config.publicBaseUrl}/${p}`,
+  );
+  return ctx;
 }
 
 export const alice: UserInfo = { id: '100000000000000001', username: 'alice', displayName: '앨리스' };

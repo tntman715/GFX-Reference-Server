@@ -9,7 +9,7 @@ import { refsRepo, type SearchOptions } from '../repos/references.js';
 import { tagsRepo } from '../repos/tags.js';
 import { usersRepo } from '../repos/users.js';
 import type { PreviewStorage } from '../storage/types.js';
-import type { Actor, PublicReference, Reference, UserInfo } from '../types.js';
+import type { Actor, Creator, PublicReference, Reference, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
 import { colorSimilarity, hexMatchScore, hexToLab, type PaletteColor } from './color.js';
@@ -21,8 +21,54 @@ export const LIMITS = {
   title: 100,
   mapName: 100,
   creatorName: 64,
+  creatorsPerRef: 8,
   tagsPerRef: 12,
 };
+
+/**
+ * "A, B" 처럼 쉼표로 이어 쓴 제작자 이름을 목록으로 (같은 이름은 한 번만).
+ * 이름 안에 쉼표를 쓸 수는 없지만, 함께 만든 작품을 쉽게 적을 수 있습니다.
+ */
+export function splitCreatorNames(text: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const part of (text ?? '').split(/[,，、]/)) {
+    const name = clean(part, LIMITS.creatorName);
+    if (name && !out.some((n) => n.toLowerCase() === name.toLowerCase())) out.push(name);
+  }
+  return out;
+}
+
+/** 제작자 목록 정리: 이름 다듬기, 같은 이름 합치기, 개수 제한 */
+export function normalizeCreators(list: { name?: string | null; id?: string | null }[]): Creator[] {
+  const out: Creator[] = [];
+  for (const c of list) {
+    // "A, B" 처럼 한 칸에 여러 명이 적혀 있으면 디스코드 계정은 첫 사람에게만 연결
+    for (const [i, name] of splitCreatorNames(c.name).entries()) {
+      const id = i === 0 && c.id && /^\d{5,25}$/.test(c.id) ? c.id : null;
+      const same = out.find((o) => o.name.toLowerCase() === name.toLowerCase());
+      if (same) {
+        same.id ??= id;
+        continue;
+      }
+      out.push({ name, id });
+    }
+  }
+  if (out.length > LIMITS.creatorsPerRef) throw new UserError(`제작자는 최대 ${LIMITS.creatorsPerRef}명까지 적을 수 있습니다.`);
+  return out;
+}
+
+/**
+ * 입력에서 제작자 목록 만들기.
+ * creators 가 있으면 그대로, 없으면 creatorName("A, B") + creatorId(첫 제작자) 로.
+ * 아무것도 없으면 null.
+ */
+function creatorsFromInput(input: { creators?: Creator[] | null; creatorName?: string | null; creatorId?: string | null }): Creator[] | null {
+  if (input.creators) return normalizeCreators(input.creators);
+  if (input.creatorName === undefined || input.creatorName === null) return null;
+  const names = splitCreatorNames(input.creatorName);
+  if (!names.length) return null;
+  return normalizeCreators(names.map((name, i) => ({ name, id: i === 0 ? (input.creatorId ?? null) : null })));
+}
 
 export interface UploadFile {
   buffer: Buffer;
@@ -35,17 +81,25 @@ export interface CreateReferenceInput {
   category: Category;
   title?: string | null;
   mapName?: string | null;
+  /** "A, B" 처럼 쉼표로 여러 명을 적을 수 있음 */
   creatorName?: string | null;
+  /** 첫 제작자의 디스코드 ID */
   creatorId?: string | null;
+  /** 제작자 목록 (있으면 creatorName / creatorId 대신 사용) */
+  creators?: Creator[] | null;
   tags?: string[];
   uploader: UserInfo;
+  /** 예전에 올린 것을 옮겨올 때 원래 올린 시각 */
+  createdAt?: Date | null;
 }
 
 export interface UpdateReferenceInput {
   title?: string | null;
   mapName?: string | null;
+  /** "A, B" 처럼 쉼표로 여러 명을 적을 수 있음 */
   creatorName?: string | null;
   creatorId?: string | null;
+  creators?: Creator[] | null;
   category?: Category;
   /** 태그 전체 교체 */
   tags?: string[];
@@ -137,8 +191,9 @@ export class ReferenceService {
 
     const mapName = cat.hasMapName ? clean(input.mapName, LIMITS.mapName) : null;
     if (cat.requiresMapName && !mapName) throw new UserError(`${cat.label} 는 맵 이름이 필요합니다.`, { code: 'map_required' });
-    const creatorName =
-      clean(input.creatorName, LIMITS.creatorName) ?? clean(input.uploader.displayName ?? input.uploader.username, LIMITS.creatorName)!;
+    const creators = creatorsFromInput(input) ?? [
+      { name: clean(input.uploader.displayName ?? input.uploader.username, LIMITS.creatorName)!, id: input.creatorId ?? null },
+    ];
     const title = clean(input.title, LIMITS.title) ?? mapName ?? titleFromFilename(file.filename);
     const tags = await this.resolveTags(input.tags ?? []);
 
@@ -164,8 +219,7 @@ export class ReferenceService {
           category: input.category,
           title,
           mapName,
-          creatorName,
-          creatorId: input.creatorId ?? null,
+          creators,
           uploaderId: input.uploader.id,
           originalFilename: path.basename(file.filename),
           originalMime: img.mime,
@@ -181,6 +235,7 @@ export class ReferenceService {
           colorShares: img.colors.colorShares,
           primaryColor: img.colors.primaryColor,
           dhash: img.dhash,
+          createdAt: input.createdAt,
         });
         await tagsRepo.setRefTags(
           q,
@@ -241,8 +296,13 @@ export class ReferenceService {
     const patch: Parameters<typeof refsRepo.update>[2] = {};
     if (input.category && input.category !== ref.category) patch.category = input.category;
     if (input.title !== undefined) patch.title = clean(input.title, LIMITS.title) ?? ref.title;
-    if (input.creatorName !== undefined) patch.creatorName = clean(input.creatorName, LIMITS.creatorName) ?? ref.creatorName;
-    if (input.creatorId !== undefined) patch.creatorId = input.creatorId;
+    if (input.creators !== undefined || input.creatorName !== undefined) {
+      const creators = creatorsFromInput(input);
+      if (creators && JSON.stringify(creators) !== JSON.stringify(ref.creators)) patch.creators = creators;
+    } else if (input.creatorId !== undefined && input.creatorId !== ref.creatorId) {
+      // 첫 제작자의 디스코드 계정만 바꾸기
+      patch.creators = ref.creators.map((c, i) => (i === 0 ? { ...c, id: input.creatorId ?? null } : c));
+    }
 
     let mapName = ref.mapName;
     if (input.mapName !== undefined) mapName = clean(input.mapName, LIMITS.mapName);
@@ -429,6 +489,7 @@ export class ReferenceService {
       title: ref.title,
       mapName: ref.mapName,
       creator: { name: ref.creatorName, id: ref.creatorId },
+      creators: ref.creators,
       uploader: { id: ref.uploaderId, name: ref.uploaderName, avatarUrl: ref.uploaderAvatar },
       width: ref.width,
       height: ref.height,

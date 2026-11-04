@@ -92,6 +92,7 @@ const EnvSchema = z.object({
 
   // ── 점수 / 반응 ─────────────────────────────────────────
   POINTS_PER_UPLOAD: z.coerce.number().int().default(10),
+  POINTS_PER_EDIT: z.coerce.number().min(0).optional(),
   /** REACTION_POINTS 에 없는 반응의 점수 */
   POINTS_PER_REACTION: z.coerce.number().min(0).default(1),
   REACTION_EMOJIS: z.string().default('⭐,🔥,👍'),
@@ -151,6 +152,8 @@ export interface Config {
 
 export interface ScoringConfig {
   pointsPerUpload: number;
+  /** 수정 제안이 받아들여졌을 때 제안한 사람이 받는 점수 (기본: 업로드 점수의 절반) */
+  pointsPerEdit: number;
   /** reactionPoints 에 없는 반응의 점수 */
   pointsPerReaction: number;
   /** 반응 이모지별 점수. 설정된 반응 이모지는 모두 들어 있음 */
@@ -268,7 +271,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       previewQuality: e.PREVIEW_QUALITY,
       duplicateThreshold: e.DUPLICATE_THRESHOLD,
     },
-    scoring: { pointsPerUpload: e.POINTS_PER_UPLOAD, pointsPerReaction: e.POINTS_PER_REACTION, reactionPoints: pointsByEmoji },
+    scoring: {
+      pointsPerUpload: e.POINTS_PER_UPLOAD,
+      pointsPerEdit: e.POINTS_PER_EDIT ?? e.POINTS_PER_UPLOAD / 2,
+      pointsPerReaction: e.POINTS_PER_REACTION, reactionPoints: pointsByEmoji },
     reactionEmojis,
     weeklyHighlight: e.WEEKLY_HIGHLIGHT,
     timezone: e.TIMEZONE,

@@ -5,7 +5,10 @@ import type { AppContext } from './context.js';
 import { openDb } from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { reactionsRepo } from './repos/reactions.js';
+import { BoardService } from './services/boards.js';
 import { CommunityService } from './services/community.js';
+import { EditService } from './services/edits.js';
+import { ImportService } from './services/importer.js';
 import { ReferenceService } from './services/references.js';
 import { createStorage } from './storage/index.js';
 import { logger } from './util/log.js';
@@ -36,5 +39,13 @@ export async function createContext(config: Config): Promise<AppContext> {
   const archive = new LocalArchive(path.join(config.dataDir, 'originals'));
   const refs = new ReferenceService(db, storage, archive, config);
   const community = new CommunityService(db, config);
-  return { config, db, storage, refs, community, bot: null };
+  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db) };
+  ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
+  ctx.edits = new EditService(
+    db,
+    refs,
+    () => (ctx.bot?.isOnline() && ctx.bot.notifyUser ? ctx.bot.notifyUser.bind(ctx.bot) : null),
+    (p) => `${config.publicBaseUrl}/${p}`,
+  );
+  return ctx;
 }

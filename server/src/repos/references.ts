@@ -1,14 +1,13 @@
 import { type Category, type ColorFamily, colorFilterThreshold, COLOR_FAMILY_KEYS } from '../constants.js';
 import type { Queryable } from '../db/index.js';
 import type { PaletteColor } from '../services/color.js';
-import type { Reference } from '../types.js';
+import type { Creator, Reference } from '../types.js';
 
 export interface NewReference {
   category: Category;
   title: string;
   mapName: string | null;
-  creatorName: string;
-  creatorId: string | null;
+  creators: Creator[];
   uploaderId: string;
   originalFilename: string;
   originalMime: string;
@@ -24,6 +23,8 @@ export interface NewReference {
   colorShares: Record<ColorFamily, number>;
   primaryColor: ColorFamily;
   dhash: string;
+  /** 비우면 지금 시각 (예전 채팅에서 옮겨온 레퍼런스는 원래 올린 시각) */
+  createdAt?: Date | null;
 }
 
 export interface SearchFilters {
@@ -86,6 +87,16 @@ function json<T>(v: unknown, fallback: T): T {
   return v as T;
 }
 
+function creatorsOf(row: Row): Creator[] {
+  const list = json<Creator[]>(row.creators, []);
+  return list.length ? list : [{ name: row.creator_name, id: row.creator_id ?? null }];
+}
+
+/** 제작자 목록 → creators / creator_name / creator_id 컬럼 값 */
+export function creatorColumns(creators: Creator[]): { json: string; name: string; id: string | null } {
+  return { json: JSON.stringify(creators), name: creators.map((c) => c.name).join(', '), id: creators[0]?.id ?? null };
+}
+
 export function mapRef(row: Row): Reference {
   return {
     id: Number(row.id),
@@ -94,6 +105,7 @@ export function mapRef(row: Row): Reference {
     mapName: row.map_name ?? null,
     creatorName: row.creator_name,
     creatorId: row.creator_id ?? null,
+    creators: creatorsOf(row),
     uploaderId: row.uploader_id,
     uploaderName: row.uploader_display_name ?? row.uploader_username ?? null,
     uploaderAvatar: row.uploader_avatar ?? null,
@@ -162,18 +174,19 @@ function buildWhere(f: SearchFilters, p: Params): string[] {
 export const refsRepo = {
   async insert(q: Queryable, r: NewReference): Promise<number> {
     const rows = await q.query<{ id: number }>(
-      `INSERT INTO refs (category, title, map_name, creator_name, creator_id, uploader_id,
+      `INSERT INTO refs (category, title, map_name, creator_name, creator_id, creators, uploader_id,
         original_filename, original_mime, original_size, width, height,
         preview_key, preview_width, preview_height, preview_size,
-        palette, color_hist, color_shares, primary_color, dhash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb,$19,$20)
+        palette, color_hist, color_shares, primary_color, dhash, created_at)
+       VALUES ($1,$2,$3,$4,$5,$22::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb,$19,$20,
+         COALESCE($21::timestamptz, now()))
        RETURNING id`,
       [
         r.category,
         r.title,
         r.mapName,
-        r.creatorName,
-        r.creatorId,
+        creatorColumns(r.creators).name,
+        creatorColumns(r.creators).id,
         r.uploaderId,
         r.originalFilename,
         r.originalMime,
@@ -189,6 +202,8 @@ export const refsRepo = {
         JSON.stringify(r.colorShares),
         r.primaryColor,
         r.dhash,
+        r.createdAt?.toISOString() ?? null,
+        creatorColumns(r.creators).json,
       ],
     );
     return Number(rows[0].id);
@@ -201,15 +216,17 @@ export const refsRepo = {
   async update(
     q: Queryable,
     id: number,
-    patch: Partial<Pick<Reference, 'title' | 'mapName' | 'creatorName' | 'creatorId' | 'category'>>,
+    patch: Partial<Pick<Reference, 'title' | 'mapName' | 'creators' | 'category'>>,
   ): Promise<void> {
     const p = new Params();
     const sets: string[] = [];
+    if (patch.creators) {
+      const c = creatorColumns(patch.creators);
+      sets.push(`creators = ${p.add(c.json)}::jsonb`, `creator_name = ${p.add(c.name)}`, `creator_id = ${p.add(c.id)}`);
+    }
     const cols: Record<string, string> = {
       title: 'title',
       mapName: 'map_name',
-      creatorName: 'creator_name',
-      creatorId: 'creator_id',
       category: 'category',
     };
     for (const [k, col] of Object.entries(cols)) {
@@ -327,12 +344,13 @@ export const refsRepo = {
   },
 
   async creators(q: Queryable, prefix: string, limit = 25): Promise<string[]> {
-    const rows = await q.query<{ creator_name: string }>(
-      `SELECT creator_name FROM refs WHERE creator_name ILIKE $1
-       GROUP BY creator_name ORDER BY count(*) DESC, creator_name LIMIT $2`,
+    const rows = await q.query<{ name: string }>(
+      `SELECT c->>'name' AS name FROM refs, jsonb_array_elements(refs.creators) c
+       WHERE c->>'name' ILIKE $1
+       GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT $2`,
       [`%${escapeLike(prefix.trim())}%`, limit],
     );
-    return rows.map((r) => r.creator_name);
+    return rows.map((r) => r.name);
   },
 
   /** 자동완성용: 제목/맵 이름/번호로 찾기 */

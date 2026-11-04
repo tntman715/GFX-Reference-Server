@@ -3,6 +3,7 @@ import { emptyState, ResultsGrid } from '../components.js';
 import { avatarSrc, clear, h, spinner } from '../dom.js';
 import { categoryLabel, t } from '../i18n.js';
 import { store } from '../store.js';
+import { profileBoards } from './boards.js';
 
 export function mountProfile(root, params, { id }) {
   const body = h('div', spinner());
@@ -35,6 +36,7 @@ export function mountProfile(root, params, { id }) {
           'div.stats',
           stat('Uploads', s?.uploads ?? 0),
           stat('Reactions', s?.reactionsReceived ?? 0),
+          stat('Edits', s?.acceptedEdits ?? 0),
           stat('Bonus', s?.adjustments ?? 0),
           stat('Rank', s ? t('profile.rankShort', { r: s.rank }) : '-'),
         ),
@@ -62,6 +64,7 @@ export function mountProfile(root, params, { id }) {
         grids.push(g);
         body.append(g.el);
       };
+      body.append(profileBoards(p.user.id));
       if (p.top.length) section('Most loved', p.top);
       section(
         'Latest',

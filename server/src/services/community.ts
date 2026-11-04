@@ -52,19 +52,56 @@ export class CommunityService {
     return tag;
   }
 
-  async removeTag(raw: string, actor: Actor): Promise<void> {
+  /** 태그 지우기. 그 태그가 달려 있던 레퍼런스 번호를 돌려줌 (아카이브 메시지 갱신용) */
+  async removeTag(raw: string, actor: Actor): Promise<{ refIds: number[] }> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그를 삭제할 수 있습니다.');
     const name = normalizeTagName(raw);
-    if (!(await tagsRepo.remove(this.db, name))) throw new NotFoundError(`\`${name}\` 태그가 없습니다.`);
+    const refIds = await this.refIdsWithTag(name);
+    const ok = await this.db.tx(async (q) => {
+      if (!(await tagsRepo.remove(q, name))) return false;
+      // 아직 옮기지 않은 가져오기 후보에서도 빼기
+      await q.query(
+        `UPDATE import_items SET tags = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements_text(tags) x WHERE x <> $1), '[]'::jsonb)
+         WHERE tags ? $1`,
+        [name],
+      );
+      return true;
+    });
+    if (!ok) throw new NotFoundError(`\`${name}\` 태그가 없습니다.`);
+    return { refIds };
   }
 
-  async renameTag(fromRaw: string, toRaw: string, actor: Actor): Promise<void> {
+  /**
+   * 태그 이름 바꾸기. 레퍼런스는 태그 번호로 연결돼 있어 모두 한꺼번에 바뀌고,
+   * 아직 옮기지 않은 가져오기 후보(태그를 이름으로 저장)도 함께 바꿈.
+   * 그 태그가 달린 레퍼런스 번호를 돌려줌 (아카이브 메시지 갱신용)
+   */
+  async renameTag(fromRaw: string, toRaw: string, actor: Actor): Promise<{ from: string; to: string; refIds: number[] }> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그 이름을 바꿀 수 있습니다.');
     const from = normalizeTagName(fromRaw);
     const to = this.validTagName(toRaw);
+    if (from === to) throw new UserError('새 이름이 지금 이름과 같아요.');
     const existing = await tagsRepo.findByNames(this.db, [to]);
     if (existing.length) throw new UserError(`\`${to}\` 태그가 이미 있습니다.`);
-    if (!(await tagsRepo.rename(this.db, from, to))) throw new NotFoundError(`\`${from}\` 태그가 없습니다.`);
+    const ok = await this.db.tx(async (q) => {
+      if (!(await tagsRepo.rename(q, from, to))) return false;
+      await q.query(
+        `UPDATE import_items SET tags = (SELECT jsonb_agg(CASE WHEN x = $1 THEN $2 ELSE x END) FROM jsonb_array_elements_text(tags) x)
+         WHERE tags ? $1`,
+        [from, to],
+      );
+      return true;
+    });
+    if (!ok) throw new NotFoundError(`\`${from}\` 태그가 없습니다.`);
+    return { from, to, refIds: await this.refIdsWithTag(to) };
+  }
+
+  private async refIdsWithTag(name: string): Promise<number[]> {
+    const rows = await this.db.query<{ ref_id: number }>(
+      'SELECT rt.ref_id FROM ref_tags rt JOIN tags t ON t.id = rt.tag_id WHERE t.name = $1 ORDER BY rt.ref_id',
+      [name],
+    );
+    return rows.map((r) => Number(r.ref_id));
   }
 
   async describeTag(raw: string, description: string | null, actor: Actor): Promise<void> {

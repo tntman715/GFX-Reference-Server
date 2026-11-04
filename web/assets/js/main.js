@@ -13,6 +13,7 @@ import { mountImport } from './views/import.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
+import { mountTags } from './views/tags.js';
 import { openUploadForm } from './views/upload.js';
 
 const app = document.getElementById('app');
@@ -46,6 +47,7 @@ function matchView(path) {
   if (path === '/import') return { key: 'import', mount: mountImport };
   if (path === '/boards') return { key: 'boards', mount: mountBoards };
   if (path === '/edits') return { key: 'edits', mount: mountEdits };
+  if (path === '/tags') return { key: 'tags', mount: mountTags };
   if ((m = /^\/board\/(\d+)$/.exec(path))) return { key: `board:${m[1]}`, nav: 'boards', mount: mountBoard, extra: { id: m[1] } };
   if ((m = /^\/user\/(\d+)$/.exec(path))) return { key: `user:${m[1]}`, nav: 'leaderboard', mount: mountProfile, extra: { id: m[1] } };
   return null;
@@ -138,6 +140,7 @@ function renderAccount() {
       me.pendingEdits ? h('span.badge', String(me.pendingEdits)) : null,
     ),
     me.isMember || me.isAdmin ? h('a', { href: '#/import', onclick: () => menu.classList.remove('open') }, t('account.import')) : null,
+    me.isAdmin ? h('a', { href: '#/tags', onclick: () => menu.classList.remove('open') }, t('account.tags')) : null,
     h(
       'button',
       {

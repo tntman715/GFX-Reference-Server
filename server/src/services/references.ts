@@ -335,6 +335,26 @@ export class ReferenceService {
     return updated;
   }
 
+  /**
+   * 태그 이름이 바뀌었을 때처럼 여러 레퍼런스의 디스코드 아카이브 메시지를 다시 씀.
+   * 디스코드 속도 제한 때문에 하나씩, 기다리지 않고 뒤에서 처리.
+   */
+  refreshArchives(ids: number[]): void {
+    if (!ids.length) return;
+    void (async () => {
+      let done = 0;
+      for (const id of ids) {
+        const ref = await refsRepo.get(this.db, id).catch(() => null);
+        if (!ref) continue;
+        await this.archive.refresh(ref).then(
+          () => done++,
+          (err) => log.warn(`#${id} 아카이브 메시지 갱신 실패`, err),
+        );
+      }
+      log.info(`아카이브 메시지 ${done}/${ids.length}개 갱신`);
+    })();
+  }
+
   async delete(id: number, actor: Actor): Promise<Reference> {
     const ref = await this.require(id);
     if (!this.canEdit(ref, actor)) throw new ForbiddenError('올린 사람이나 관리자만 삭제할 수 있습니다.');

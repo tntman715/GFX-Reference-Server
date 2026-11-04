@@ -4331,3 +4331,50 @@ html.no-grain .profile-head::after {
     padding: 0 10px;
   }
 }
+
+/* ── 태그 관리 (관리자) ─────────────────────────────── */
+.tag-admin-search {
+  flex: 0 1 280px;
+}
+
+.tag-admin-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 40px;
+  border-top: 1px solid var(--line);
+}
+
+.tag-admin-row {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tag-admin-row .chip {
+  justify-self: start;
+}
+
+.tag-admin-row .faint {
+  font-size: 13px;
+  text-align: right;
+}
+
+.tag-admin-desc {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .tag-admin-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .tag-admin-desc {
+    display: none;
+  }
+}

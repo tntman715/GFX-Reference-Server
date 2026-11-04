@@ -324,3 +324,33 @@ describe('사이트에서 올리기', () => {
     expect((await upload(bob, { category: 'non_gm' }, big)).status).toBe(413);
   });
 });
+
+describe('태그 이름 바꾸기 (관리자)', () => {
+  it('썸네일과 가져오기 후보 모두에 한꺼번에 적용', async () => {
+    const app = createApi(ctx);
+    const as = async (user: typeof alice, path: string, body: unknown) => {
+      const token = await ctx.community.createSession(user, 'plugin');
+      return app.request(path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    };
+    const ref = await ctx.refs.create({ file: file(images.a3), category: 'non_gm', title: 'x', tags: ['glow', '3d'], uploader: bob });
+    await ctx.importer.runScan(source, '900');
+    const [first] = await ctx.importer.list('pending');
+    await ctx.importer.update(first.id, { tags: ['glow'] });
+
+    expect((await as(bob, '/api/admin/tags/rename', { from: 'glow', to: 'neon-glow' })).status).toBe(403);
+    expect(((await (await as(alice, '/api/admin/tags/rename', { from: 'glow', to: '3d' })).json()) as any).error).toMatch(/이미 있습니다/);
+
+    const res = (await (await as(alice, '/api/admin/tags/rename', { from: 'glow', to: 'Neon Glow' })).json()) as any;
+    expect(res).toMatchObject({ from: 'glow', to: 'neon-glow', refs: 1 });
+    expect((await ctx.refs.require(ref.id)).tags).toEqual(['3d', 'neon-glow']);
+    expect((await ctx.importer.get(first.id)).tags).toEqual(['neon-glow']);
+    // 바뀐 이름으로 저장도 됨
+    expect((await ctx.importer.commit(first.id, alice)).ref.tags).toEqual(['neon-glow']);
+
+    // 태그를 지우면 후보에서도 빠짐
+    const [second] = await ctx.importer.list('pending');
+    await ctx.importer.update(second.id, { tags: ['3d', 'neon-glow'] });
+    await ctx.community.removeTag('neon-glow', { id: alice.id, isAdmin: true });
+    expect((await ctx.importer.get(second.id)).tags).toEqual(['3d']);
+  });
+});

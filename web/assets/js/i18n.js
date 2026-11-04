@@ -136,6 +136,7 @@ const STRINGS = {
     'footer.text': '새 레퍼런스는 위쪽 Upload 버튼이나 디스코드 서버의 /업로드 명령어로 올려요. 올린 작업물은 이곳에 바로 정리돼요.',
 
     'account.import': '레퍼런스 가져오기',
+    'account.tags': '태그 관리 (관리자)',
     'upload.button': '레퍼런스 올리기',
     'upload.loginReason': '로그인하면 사이트에서 바로 레퍼런스를 올릴 수 있어요.',
     'upload.membersOnly': 'GFX References 디스코드 서버 멤버만 올릴 수 있어요.',
@@ -341,6 +342,7 @@ const STRINGS = {
     'footer.text': 'New references are uploaded with the Upload button above or the /업로드 command on our Discord server, and show up here right away.',
 
     'account.import': 'Import references',
+    'account.tags': 'Manage tags (admin)',
     'upload.button': 'Upload a reference',
     'upload.loginReason': 'Log in to upload references right from the site.',
     'upload.membersOnly': 'Only members of the GFX References Discord server can upload.',

@@ -586,14 +586,16 @@ export class BotRuntime implements BotBridge {
       }
       case 'tag-remove': {
         const name = i.options.getString('name', true);
-        await this.community.removeTag(name, actor);
-        return void (await done(`🗑️ \`${name}\` 태그를 삭제했어요.`));
+        const { refIds } = await this.community.removeTag(name, actor);
+        this.refs.refreshArchives(refIds);
+        return void (await done(`🗑️ \`${name}\` 태그를 삭제했어요. (레퍼런스 ${refIds.length}개에서 빠짐)`));
       }
       case 'tag-rename': {
         const from = i.options.getString('from', true);
         const to = i.options.getString('to', true);
-        await this.community.renameTag(from, to, actor);
-        return void (await done(`✏️ \`${from}\` → \`${to}\``));
+        const res = await this.community.renameTag(from, to, actor);
+        this.refs.refreshArchives(res.refIds);
+        return void (await done(`✏️ \`${res.from}\` → \`${res.to}\` (레퍼런스 ${res.refIds.length}개에 적용)`));
       }
       case 'tag-describe': {
         const name = i.options.getString('name', true);

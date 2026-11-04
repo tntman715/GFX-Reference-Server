@@ -677,6 +677,16 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return c.json({ tag });
   });
 
+  // 태그 이름 바꾸기: 그 태그가 달린 모든 레퍼런스와 가져오기 후보에 한꺼번에 적용
+  app.post('/api/admin/tags/rename', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ from?: string; to?: string }>().catch(() => ({}) as { from?: string; to?: string });
+    const res = await community.renameTag(String(body.from ?? ''), String(body.to ?? ''), { id: user.id, isAdmin: true });
+    refs.refreshArchives(res.refIds);
+    log.info(`태그 이름 변경: ${res.from} → ${res.to} (레퍼런스 ${res.refIds.length}개) by ${user.username}`);
+    return c.json({ from: res.from, to: res.to, refs: res.refIds.length });
+  });
+
   app.get('/api/admin/import/names', async (c) => {
     await requireAdmin(c);
     return c.json({ groups: await importer.similarGroups(nameField(c.req.query('field'))) });

@@ -30,6 +30,7 @@
   --accent-soft: rgba(255, 122, 26, 0.16);
   --accent-2: #3fca5c;
   --accent-3: #86a8ff;
+  --accent-4: #ff5a4e;
   --discord: #5865f2;
 
   --good: #3fca5c;
@@ -276,6 +277,9 @@ img {
 
 .nav a[data-route='explore'] {
   --pill: var(--accent);
+}
+.nav a[data-route='feed'] {
+  --pill: var(--accent-4);
 }
 .nav a[data-route='popular'] {
   --pill: var(--accent-2);
@@ -2781,6 +2785,244 @@ select.select option {
   font-size: 12.5px;
 }
 
+/* ── 피드: 썸네일을 영상 목록처럼 보기 ─────────────────
+   유튜브 홈 화면의 크기와 색을 따름 (Roboto, 16:9, 모서리 12px) */
+.yt-screen {
+  --yt-bg: #0f0f0f;
+  --yt-text: #f1f1f1;
+  --yt-sub: #aaaaaa;
+  --yt-chip: rgba(255, 255, 255, 0.1);
+  --yt-chip-hover: rgba(255, 255, 255, 0.2);
+  --yt-chip-on: #f1f1f1;
+  --yt-chip-on-text: #0f0f0f;
+  --yt-line: rgba(255, 255, 255, 0.2);
+  padding: 20px 24px 28px;
+  border-radius: var(--radius-lg);
+  background: var(--yt-bg);
+  color: var(--yt-text);
+  font-family: Roboto, Arial, 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  letter-spacing: 0;
+  transition: background var(--mid) var(--ease), color var(--mid) var(--ease);
+}
+
+.yt-screen.light {
+  --yt-bg: #ffffff;
+  --yt-text: #0f0f0f;
+  --yt-sub: #606060;
+  --yt-chip: rgba(0, 0, 0, 0.05);
+  --yt-chip-hover: rgba(0, 0, 0, 0.1);
+  --yt-chip-on: #0f0f0f;
+  --yt-chip-on-text: #ffffff;
+  --yt-line: #d3d3d3;
+}
+
+.yt-top {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.yt-search {
+  display: flex;
+  max-width: 640px;
+  height: 40px;
+}
+
+.yt-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 16px;
+  border: 1px solid var(--yt-line);
+  border-right: 0;
+  border-radius: 40px 0 0 40px;
+  background: transparent;
+  color: var(--yt-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.yt-search input:focus {
+  outline: none;
+  border-color: #1c62b9;
+}
+
+.yt-search button {
+  width: 64px;
+  border: 1px solid var(--yt-line);
+  border-radius: 0 40px 40px 0;
+  background: var(--yt-chip);
+  color: var(--yt-text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.yt-search button:hover {
+  background: var(--yt-chip-hover);
+}
+
+.yt-chips {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.yt-chips button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--yt-chip);
+  color: var(--yt-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--fast);
+}
+
+.yt-chips button:hover {
+  background: var(--yt-chip-hover);
+}
+
+.yt-chips button.on {
+  background: var(--yt-chip-on);
+  color: var(--yt-chip-on-text);
+}
+
+.yt-chips .shuffle span {
+  display: inline-flex;
+  transition: transform 0.5s var(--spring);
+}
+
+.yt-chips .shuffle:hover span {
+  transform: rotate(180deg);
+}
+
+.yt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 40px 16px;
+}
+
+.yt-card {
+  display: block;
+  min-width: 0;
+  color: var(--yt-text);
+}
+
+.yt-card.in {
+  animation: card-in 0.6s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .yt-card:not(.in) {
+    opacity: 0;
+  }
+}
+
+.yt-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-radius 0.2s ease;
+}
+
+.yt-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease), transform 0.6s var(--ease);
+}
+
+.yt-thumb img.loaded {
+  opacity: 1;
+}
+
+/* 마우스를 올리면 실제 화면처럼 모서리가 펴지고 살짝 확대 */
+.yt-card:hover .yt-thumb {
+  border-radius: 0;
+}
+
+.yt-card:hover .yt-thumb img.loaded {
+  transform: scale(1.03);
+}
+
+.yt-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.yt-info {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.yt-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.yt-text {
+  min-width: 0;
+}
+
+.yt-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 22px;
+  margin-bottom: 4px;
+}
+
+.yt-channel,
+.yt-meta {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--yt-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yt-card:hover .yt-channel {
+  color: var(--yt-text);
+}
+
+.yt-screen .load-more .btn.view-all {
+  font-family: var(--font);
+}
+
+.yt-screen .empty {
+  color: var(--yt-sub);
+  border-color: var(--yt-line);
+}
+
 /* ── 색 면 질감: 주황 · 초록 · 파랑 · 종이색 면에 인쇄물 같은 거친 결 ── */
 .nav a.active,
 .lang-switch button.on,
@@ -3029,6 +3271,15 @@ select.select option {
     gap: 10px;
   }
 
+  .yt-screen {
+    padding: 14px 12px 20px;
+  }
+
+  .yt-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
   .masonry-col {
     gap: 16px;
   }
@@ -3060,8 +3311,13 @@ select.select option {
     display: none;
   }
 
+  .nav {
+    gap: 4px;
+  }
+
   .nav a {
-    padding: 0 11px;
+    padding: 0 8px;
+    font-size: 12.5px;
   }
 
   .brand {

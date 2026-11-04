@@ -65,10 +65,14 @@ export function refCard(ref, { rank } = {}) {
 /**
  * 결과를 메이슨리로 보여주고, 끝에 닿으면 다음 페이지를 불러옵니다.
  * load(page) → { items, hasMore, total }
+ * layout: 'masonry' (기본) 또는 'grid' (같은 크기 격자, gridClass 로 모양을 정함)
+ * card: 카드를 만드는 함수 (기본 refCard)
  */
 export class ResultsGrid {
-  constructor({ load, minColWidth = 250, gap = 16, ranked = false, empty, onTotal }) {
+  constructor({ load, minColWidth = 250, gap = 16, ranked = false, empty, onTotal, layout = 'masonry', gridClass = '', card = refCard }) {
     this.load = load;
+    this.layout = layout;
+    this.card = card;
     this.minColWidth = minColWidth;
     this.gap = gap;
     this.ranked = ranked;
@@ -79,7 +83,7 @@ export class ResultsGrid {
     this.hasMore = true;
     this.loading = false;
     this.el = h('div');
-    this.grid = h('div.masonry');
+    this.grid = layout === 'grid' ? h('div', { class: gridClass }) : h('div.masonry');
     this.footer = h('div.load-more');
     this.el.append(this.grid, this.footer);
     this.cols = [];
@@ -87,7 +91,7 @@ export class ResultsGrid {
     this.token = 0;
 
     this.resizeObserver = new ResizeObserver(() => {
-      if (this.columnCount() !== this.cols.length) this.relayout();
+      if (this.layout === 'masonry' && this.columnCount() !== this.cols.length) this.relayout();
     });
     this.resizeObserver.observe(this.grid);
     this.io = new IntersectionObserver((entries) => {
@@ -140,6 +144,10 @@ export class ResultsGrid {
   }
 
   place(it) {
+    if (this.layout === 'grid') {
+      this.grid.append(it.el);
+      return;
+    }
     // 열이 아직 없으면 relayout 이 이 카드까지 모두 배치함 (예전엔 첫 카드가 한 번 더 옮겨져 1번이 둘째 칸에 갔음)
     if (!this.cols.length) {
       this.relayout();
@@ -164,7 +172,7 @@ export class ResultsGrid {
       if (this.page === 1) this.onTotal?.(res.total);
       const start = this.items.length;
       res.items.forEach((ref, i) => {
-        const it = { el: refCard(ref, this.ranked ? { rank: start + i + 1 } : {}), ratio: ref.preview.height / ref.preview.width };
+        const it = { el: this.card(ref, this.ranked ? { rank: start + i + 1 } : {}), ratio: ref.preview.height / ref.preview.width };
         this.items.push(it);
         this.place(it);
         this.reveal(it.el);

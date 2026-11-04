@@ -103,6 +103,24 @@ export function fmtDate(iso) {
   return d.toLocaleDateString(locale(), { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+/** "3일 전" / "3 days ago" */
+export function fmtRelative(iso) {
+  const sec = (new Date(iso).getTime() - Date.now()) / 1000;
+  const units = [
+    ['year', 31536000],
+    ['month', 2592000],
+    ['week', 604800],
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'always' });
+  for (const [unit, size] of units) {
+    if (Math.abs(sec) >= size) return rtf.format(Math.round(sec / size), unit);
+  }
+  return rtf.format(Math.round(sec / 60) || -1, 'minute');
+}
+
 export function fmtBytes(n) {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
   return `${(n / 1024 / 1024).toFixed(1)}MB`;

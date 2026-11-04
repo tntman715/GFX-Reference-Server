@@ -6,6 +6,7 @@ import { store } from './store.js';
 import { mountColors } from './views/colors.js';
 import { openDetail } from './views/detail.js';
 import { mountExplore } from './views/explore.js';
+import { mountFeed } from './views/feed.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
@@ -34,6 +35,7 @@ function navigate(hash) {
 function matchView(path) {
   let m;
   if (path === '/' || path === '') return { key: 'explore', mount: mountExplore };
+  if (path === '/feed') return { key: 'feed', mount: mountFeed };
   if (path === '/popular') return { key: 'popular', mount: mountPopular };
   if (path === '/colors') return { key: 'colors', mount: mountColors };
   if (path === '/leaderboard') return { key: 'leaderboard', mount: mountLeaderboard };

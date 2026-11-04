@@ -71,6 +71,16 @@ const STRINGS = {
     'explore.noMatch': '조건에 맞는 레퍼런스가 없어요.',
     'explore.noRefs': '아직 레퍼런스가 없어요. 디스코드에서 /업로드 명령어로 올릴 수 있어요.',
 
+    // 피드 (영상 목록처럼 보기)
+    'feed.lead': '레퍼런스 서버에 등록된 지메 썸네일을 유튜브 화면처럼 모아 봐요. 영상 제목은 맵 이름이에요.',
+    'feed.search': '맵 이름, 제작자로 검색',
+    'feed.sort.random': '랜덤',
+    'feed.sort.popular': '인기순',
+    'feed.sort.newest': '최근순',
+    'feed.shuffle': '다시 섞기',
+    'feed.reactions': '반응 {n}회',
+    'feed.empty': '아직 등록된 썸네일이 없어요.',
+
     // 인기
     'popular.lead': '받은 반응이 많은 순서예요. 디스코드 아카이브에 달린 반응도 함께 셉니다.',
     'popular.empty': '이 기간에는 반응을 받은 레퍼런스가 아직 없어요.',
@@ -186,6 +196,15 @@ const STRINGS = {
     'explore.countOne': '{n} reference',
     'explore.noMatch': 'No references match these filters.',
     'explore.noRefs': 'No references yet. They can be uploaded on Discord with /업로드.',
+
+    'feed.lead': 'GM thumbnails from the archive, laid out like a YouTube feed. Video titles are the map names.',
+    'feed.search': 'Search map names or creators',
+    'feed.sort.random': 'Random',
+    'feed.sort.popular': 'Popular',
+    'feed.sort.newest': 'Newest',
+    'feed.shuffle': 'Shuffle',
+    'feed.reactions': '{n} reactions',
+    'feed.empty': 'No thumbnails yet.',
 
     'popular.lead': 'Ranked by reactions, including reactions on the Discord archive.',
     'popular.empty': 'Nothing has received reactions in this period yet.',

@@ -10,6 +10,7 @@ import type { PreviewStorage } from '../storage/types.js';
 import type { Actor, Creator, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, ServiceUnavailableError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import { normalizeCreators, splitCreatorNames } from './references.js';
 
 const log = logger('resources');
@@ -210,6 +211,7 @@ export class ResourceService {
       [kind, name, description?.trim() || null, actor.id],
     );
     if (!rows.length) throw new UserError(`\`${name}\` 태그는 이미 있어요.`);
+    await auditRepo.add(this.db, { actorId: actor.id, action: 'resource-tag.add', targetType: 'resource-tag', targetId: `${kind}:${name}`, summary: `${RESOURCE_KINDS[kind].label} 태그 '${name}' 추가` });
     return { name };
   }
 
@@ -223,6 +225,7 @@ export class ResourceService {
     const rows = await this.db.query<{ id: number }>('UPDATE resource_tags SET name = $3 WHERE kind = $1 AND name = $2 RETURNING id', [kind, from, to]);
     if (!rows.length) throw new NotFoundError(`\`${from}\` 태그가 없어요.`);
     const n = await this.db.query<{ n: number }>('SELECT count(*)::int AS n FROM resource_tag_links WHERE tag_id = $1', [rows[0].id]);
+    await auditRepo.add(this.db, { actorId: actor.id, action: 'resource-tag.rename', targetType: 'resource-tag', targetId: `${kind}:${to}`, summary: `${RESOURCE_KINDS[kind].label} 태그 '${from}' → '${to}'` });
     return { from, to, count: Number(n[0]?.n ?? 0) };
   }
 
@@ -231,6 +234,7 @@ export class ResourceService {
     const name = normalizeTagName(raw);
     const rows = await this.db.query('DELETE FROM resource_tags WHERE kind = $1 AND name = $2 RETURNING id', [kind, name]);
     if (!rows.length) throw new NotFoundError(`\`${name}\` 태그가 없어요.`);
+    await auditRepo.add(this.db, { actorId: actor.id, action: 'resource-tag.remove', targetType: 'resource-tag', targetId: `${kind}:${name}`, summary: `${RESOURCE_KINDS[kind].label} 태그 '${name}' 삭제` });
   }
 
   private async resolveTags(q: Queryable, kind: ResourceKind, names: string[]): Promise<number[]> {
@@ -466,6 +470,16 @@ export class ResourceService {
     if (res.file) await this.store.remove(res).catch((err) => log.warn(`#${id} 보관 메시지 삭제 실패`, err));
     for (const m of res.media) if (m.type === 'image') await this.storage.delete(m.key).catch(() => undefined);
     log.info(`${res.kind} #${id} 삭제 by ${actor.id}`);
+    if (actor.id !== res.uploaderId) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'resource.delete',
+        targetType: 'resource',
+        targetId: id,
+        summary: `다른 사람의 ${RESOURCE_KINDS[res.kind].label} #${id} '${res.title}' 삭제`,
+        detail: { uploaderId: res.uploaderId, kind: res.kind },
+      });
+    }
     return res;
   }
 

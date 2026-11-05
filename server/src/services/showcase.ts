@@ -3,6 +3,7 @@ import { usersRepo } from '../repos/users.js';
 import type { Actor, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import { youtubeId } from './resources.js';
 
 const log = logger('showcase');
@@ -297,6 +298,16 @@ export class ShowcaseService {
     if (!actor.isAdmin && actor.id !== s.addedBy.id) throw new ForbiddenError('올린 사람이나 관리자만 지울 수 있어요.');
     await this.db.query('DELETE FROM showcases WHERE id = $1', [id]);
     log.info(`쇼케이스 #${id} 삭제 by ${actor.id}`);
+    if (actor.id !== s.addedBy.id) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'showcase.delete',
+        targetType: 'showcase',
+        targetId: id,
+        summary: `다른 사람이 올린 쇼케이스 #${id} '${s.title}' 삭제`,
+        detail: { addedBy: s.addedBy.id, youtubeId: s.youtubeId },
+      });
+    }
     return s;
   }
 
@@ -374,6 +385,14 @@ export class ShowcaseService {
     if (!req) throw new NotFoundError('요청을 찾을 수 없어요.');
     if (!rows[0]) throw new UserError('이미 처리된 요청이에요.', { code: 'already_decided' });
     log.info(`쇼케이스 재생목록 요청 #${id} ${approve ? '승인' : '거절'} by ${actor.id}`);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: approve ? 'showcase-request.approve' : 'showcase-request.reject',
+      targetType: 'showcase-request',
+      targetId: id,
+      summary: `쇼케이스 재생목록 '${req.title ?? req.playlistId}' (${req.itemCount ?? '?'}개) ${approve ? '승인' : '거절'}`,
+      detail: { playlistId: req.playlistId, requestedBy: req.requestedBy.id },
+    });
     if (approve) {
       const job = this.runImport(req).finally(() => this.running.delete(id));
       this.running.set(id, job);

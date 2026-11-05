@@ -40,6 +40,7 @@ import {
 } from '../constants.js';
 import { reactionPointsText } from '../config.js';
 import type { AppContext, BotBridge } from '../context.js';
+import { auditRepo } from '../repos/audit.js';
 import type { SearchOptions } from '../repos/references.js';
 import { type CreateReferenceInput, DuplicateError } from '../services/references.js';
 import type { Reference } from '../types.js';
@@ -763,6 +764,7 @@ export class BotRuntime implements BotBridge {
       case 'highlight': {
         await i.deferReply({ flags: MessageFlags.Ephemeral });
         const posted = await this.highlight.post();
+        if (posted) await auditRepo.add(this.ctxDb, { actorId: actor.id, action: 'highlight.post', summary: '주간 인기 레퍼런스 직접 게시' });
         return void (await i.editReply(posted ? '📣 주간 인기 레퍼런스를 게시했어요.' : '게시할 채널(HIGHLIGHT_CHANNEL_ID)이 없거나 이번 주 반응이 없어요.'));
       }
       case 'stats': {

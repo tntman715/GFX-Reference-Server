@@ -22,6 +22,7 @@ import type { PreviewStorage } from '../storage/types.js';
 import type { Actor, Creator, PublicReference, Reference, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import { colorSimilarity, hexMatchScore, hexToLab, type PaletteColor } from './color.js';
 import { hammingDistance, makeHqPreview, processImage } from './image.js';
 
@@ -370,7 +371,8 @@ export class ReferenceService {
 
   // ── 수정 / 삭제 ─────────────────────────────────────────
 
-  async update(id: number, input: UpdateReferenceInput, actor: Actor): Promise<Reference> {
+  /** opts.audit: false 면 감사 로그를 남기지 않음 (한꺼번에 바꾸는 쪽에서 따로 한 줄만 남길 때) */
+  async update(id: number, input: UpdateReferenceInput, actor: Actor, opts: { audit?: boolean } = {}): Promise<Reference> {
     const ref = await this.require(id);
     if (!this.canEdit(ref, actor)) throw new ForbiddenError('올린 사람이나 관리자만 수정할 수 있습니다.');
 
@@ -421,6 +423,17 @@ export class ReferenceService {
     this.invalidate();
     const updated = (await refsRepo.get(this.db, id))!;
     await this.archive.refresh(updated).catch((err) => log.warn(`#${id} 아카이브 메시지 갱신 실패`, err));
+    if (opts.audit !== false && actor.id !== ref.uploaderId) {
+      const changed = [...Object.keys(patch), ...(tags ? ['tags'] : [])];
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'ref.update',
+        targetType: 'ref',
+        targetId: id,
+        summary: `다른 사람의 레퍼런스 #${id} '${updated.title}' 수정 (${changed.join(', ') || '변경 없음'})`,
+        detail: { uploaderId: ref.uploaderId, changed },
+      });
+    }
     return updated;
   }
 
@@ -453,6 +466,16 @@ export class ReferenceService {
     await this.storage.delete(ref.previewKey).catch((err) => log.warn(`#${id} 미리보기 삭제 실패`, err));
     if (ref.hqKey) await this.storage.delete(ref.hqKey).catch((err) => log.warn(`#${id} 고화질 미리보기 삭제 실패`, err));
     log.info(`#${id} 삭제 by ${actor.id}`);
+    if (actor.id !== ref.uploaderId) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'ref.delete',
+        targetType: 'ref',
+        targetId: id,
+        summary: `다른 사람의 레퍼런스 #${id} '${ref.title}' 삭제`,
+        detail: { uploaderId: ref.uploaderId, category: ref.category },
+      });
+    }
     return ref;
   }
 

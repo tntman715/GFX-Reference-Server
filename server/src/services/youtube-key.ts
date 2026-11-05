@@ -1,4 +1,5 @@
 import type { Db } from '../db/index.js';
+import { auditRepo } from '../repos/audit.js';
 import { kvRepo } from '../repos/kv.js';
 import { UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
@@ -90,6 +91,8 @@ export class YoutubeKeyStore {
     await kvRepo.set(this.db, KV_KEY, saved);
     this.saved = saved;
     log.info(`유튜브 API 키를 바꿨습니다 (…${key.slice(-4)}) by ${actorId}`);
+    // 키 전체는 남기지 않고 마지막 4글자만
+    await auditRepo.add(this.db, { actorId, action: 'youtube-key.set', targetType: 'setting', targetId: 'youtube', summary: `유튜브 API 키 저장 (…${key.slice(-4)})` });
     return this.status();
   }
 
@@ -97,6 +100,7 @@ export class YoutubeKeyStore {
     await this.db.query('DELETE FROM kv WHERE key = $1', [KV_KEY]);
     this.saved = null;
     log.info(`사이트에서 넣은 유튜브 API 키를 지웠습니다 by ${actorId}`);
+    await auditRepo.add(this.db, { actorId, action: 'youtube-key.clear', targetType: 'setting', targetId: 'youtube', summary: '사이트에서 넣은 유튜브 API 키 삭제' });
     return this.status();
   }
 }

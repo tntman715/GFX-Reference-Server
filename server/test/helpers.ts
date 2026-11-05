@@ -20,6 +20,7 @@ import type { ReportService } from '../src/services/reports.js';
 import { ResourceService } from '../src/services/resources.js';
 import { VideoService } from '../src/services/videos.js';
 import { YoutubeKeyStore } from '../src/services/youtube-key.js';
+import { SiteStats } from '../src/services/site-stats.js';
 import { UserError } from '../src/util/errors.js';
 import { LocalStorage } from '../src/storage/local.js';
 import type { UserInfo } from '../src/types.js';
@@ -46,7 +47,7 @@ async function freshDb(): Promise<Db> {
     await migrate(sharedDb);
   }
   await sharedDb.exec(`
-    TRUNCATE showcases, showcase_requests, ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
+    TRUNCATE audit_log, site_stats_daily, showcases, showcase_requests, ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
     ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (grp, name, description, created_by) VALUES ('gd', '${t.name}', '${t.description}', 'system'), ('nongd', '${t.name}', '${t.description}', 'system');`).join('\n')}
   `);
   return sharedDb;
@@ -73,6 +74,7 @@ export async function makeContext(env: Record<string, string> = {}, bot: BotBrid
     resources: new ResourceService(db, storage, new LocalResourceStore(path.join(tmp, 'resources')), config),
     reports: null! as ReportService,
     showcase: null! as ShowcaseService,
+    siteStats: new SiteStats(db, { timezone: config.timezone }),
     // 테스트에서는 키를 유튜브에 확인하지 않음 ('bad' 가 들어간 키는 안 되는 키)
     youtubeKey: new YoutubeKeyStore(db, config.youtube.apiKey, {
       make: () => fakePlaylistApi,

@@ -14,6 +14,7 @@ import { ReferenceService } from './services/references.js';
 import { ReportService } from './services/reports.js';
 import { RESOURCE_KINDS, ResourceService } from './services/resources.js';
 import { ShowcaseService } from './services/showcase.js';
+import { SiteStats } from './services/site-stats.js';
 import { VideoService } from './services/videos.js';
 import { YoutubeKeyStore } from './services/youtube-key.js';
 import { createStorage } from './storage/index.js';
@@ -47,7 +48,9 @@ export async function createContext(config: Config): Promise<AppContext> {
   const community = new CommunityService(db, config);
   const youtubeKey = new YoutubeKeyStore(db, config.youtube.apiKey);
   await youtubeKey.load();
-  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db), resources: null!, reports: null!, showcase: null!, youtubeKey, videos: new VideoService(db, refs) };
+  const siteStats = new SiteStats(db, { timezone: config.timezone });
+  siteStats.start();
+  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db), resources: null!, reports: null!, showcase: null!, youtubeKey, siteStats, videos: new VideoService(db, refs) };
   ctx.resources = new ResourceService(db, storage, new LocalResourceStore(path.join(config.dataDir, 'resources')), config);
   ctx.showcase = createShowcase(ctx);
   ctx.reports = createReports(ctx);

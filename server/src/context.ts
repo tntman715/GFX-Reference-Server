@@ -9,6 +9,7 @@ import type { ReferenceService } from './services/references.js';
 import type { ReportNotice, ReportService } from './services/reports.js';
 import type { ResourceService } from './services/resources.js';
 import type { ShowcaseRequest, ShowcaseService } from './services/showcase.js';
+import type { SiteStats } from './services/site-stats.js';
 import type { VideoService } from './services/videos.js';
 import type { YoutubeKeyStore } from './services/youtube-key.js';
 import type { PreviewStorage } from './storage/types.js';
@@ -51,5 +52,7 @@ export interface AppContext {
   showcase: ShowcaseService;
   /** 쇼케이스 재생목록 가져오기용 유튜브 API 키 (사이트에서 넣은 키 → 없으면 .env) */
   youtubeKey: YoutubeKeyStore;
+  /** 관리자 전용 방문 통계 (하루 합계 숫자만) */
+  siteStats: SiteStats;
   bot: BotBridge | null;
 }

@@ -4,6 +4,7 @@ import { kvRepo } from '../repos/kv.js';
 import type { UserInfo } from '../types.js';
 import { NotFoundError, ServiceUnavailableError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import { findSimilarGroups, groupKey, type NameCount, type NameGroup, similarTo } from '../util/similar.js';
 import { LIMITS, type ReferenceService, splitCreatorNames } from './references.js';
 
@@ -484,9 +485,17 @@ export class ImportService {
       [names],
     );
     for (const r of refRows) {
-      await this.refs.update(r.id, { mapName: target, ...(r.title === r.map_name ? { title: target } : {}) }, actor);
+      await this.refs.update(r.id, { mapName: target, ...(r.title === r.map_name ? { title: target } : {}) }, actor, { audit: false });
     }
     log.info(`맵 이름 통일: ${names.join(', ')} → ${target} (후보 ${items.length} · 레퍼런스 ${refRows.length})`);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'names.rename',
+      targetType: 'map',
+      targetId: target,
+      summary: `맵 이름 통일: ${names.join(', ')} → ${target} (가져오기 후보 ${items.length} · 레퍼런스 ${refRows.length})`,
+      detail: { field, from: names, to: target },
+    });
     return { items: items.length, refs: refRows.length };
   }
 
@@ -510,9 +519,17 @@ export class ImportService {
     );
     for (const r of refRows) {
       const ref = await this.refs.require(Number(r.id));
-      await this.refs.update(ref.id, { creators: ref.creators.map((c) => (from.has(c.name) ? { ...c, name: target } : c)) }, actor);
+      await this.refs.update(ref.id, { creators: ref.creators.map((c) => (from.has(c.name) ? { ...c, name: target } : c)) }, actor, { audit: false });
     }
     log.info(`제작자 이름 통일: ${names.join(', ')} → ${target} (후보 ${itemCount} · 레퍼런스 ${refRows.length})`);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'names.rename',
+      targetType: 'creator',
+      targetId: target,
+      summary: `제작자 이름 통일: ${names.join(', ')} → ${target} (가져오기 후보 ${itemCount} · 레퍼런스 ${refRows.length})`,
+      detail: { field: 'creator', from: names, to: target },
+    });
     return { items: itemCount, refs: refRows.length };
   }
 }

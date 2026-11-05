@@ -5359,3 +5359,271 @@ img.has-alpha {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
+
+/* ── 관리자: 사이트 통계 · 감사 로그 ── */
+.adm-privacy {
+  margin: 0 0 22px;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.adm-privacy p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.adm-h {
+  margin: 30px 0 4px;
+  font-size: 20px;
+}
+
+.adm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.adm-grid h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.adm-grid .bar {
+  grid-template-columns: minmax(90px, 160px) 1fr auto;
+}
+
+.adm-chart {
+  padding: 16px 18px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+}
+
+.adm-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.adm-plot {
+  position: relative;
+}
+
+.adm-cols {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 140px;
+  border-bottom: 1px solid var(--line);
+}
+
+.adm-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+}
+
+.adm-col-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+  opacity: 0.85;
+  transition: opacity var(--fast);
+}
+
+.adm-col:hover .adm-col-fill {
+  opacity: 1;
+}
+
+.adm-tip {
+  position: absolute;
+  top: -6px;
+  transform: translate(-50%, -100%);
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--line);
+  font-size: 12.5px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.adm-tip[hidden] {
+  display: none;
+}
+
+.adm-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.adm-table {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.adm-table summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.adm-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.adm-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.adm-table th,
+.adm-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.adm-table th:first-child,
+.adm-table td:first-child {
+  text-align: left;
+}
+
+.adm-filter {
+  width: auto;
+  min-width: 180px;
+}
+
+.adm-audit-row {
+  display: grid;
+  grid-template-columns: 90px minmax(120px, 180px) 1fr auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.adm-actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: inherit;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-actor img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.adm-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.adm-action {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.adm-audit + .btn {
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .adm-audit-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .adm-summary {
+    grid-column: 1 / -1;
+  }
+
+  .adm-action {
+    display: none;
+  }
+}
+
+/* ── 개인정보 안내 ── */
+.privacy-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.privacy-card {
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.privacy-icon {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.privacy-card strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.privacy-card p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.privacy-body {
+  max-width: 760px;
+}
+
+.privacy-body h2 {
+  margin: 26px 0 8px;
+  font-size: 18px;
+}
+
+.privacy-body ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.footer-privacy {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 한 가지 숫자만 보여 주는 막대는 한 색으로 (순위마다 색을 바꾸지 않음) */
+.adm-grid .bar .fill {
+  background: var(--accent);
+}

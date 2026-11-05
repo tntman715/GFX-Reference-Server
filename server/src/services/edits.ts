@@ -4,6 +4,7 @@ import { usersRepo } from '../repos/users.js';
 import type { Actor, Creator, Reference, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import { LIMITS, normalizeCreators, type ReferenceService, splitCreatorNames } from './references.js';
 
 const log = logger('edits');
@@ -208,7 +209,7 @@ export class EditService {
     return { mode: 'proposed', proposal };
   }
 
-  private async applyChanges(ref: Reference, c: ProposalChanges, actor: Actor): Promise<Reference> {
+  private async applyChanges(ref: Reference, c: ProposalChanges, actor: Actor, audit = true): Promise<Reference> {
     return this.refs.update(
       ref.id,
       {
@@ -220,6 +221,7 @@ export class EditService {
         ...(c.removeTags?.length ? { removeTags: c.removeTags } : {}),
       },
       actor,
+      { audit },
     );
   }
 
@@ -277,13 +279,23 @@ export class EditService {
     if (p.status !== 'pending') throw new UserError('이미 처리된 제안이에요.', { code: 'already_decided' });
     const ref = await this.refs.require(p.refId);
     // 위에서 올린 사람 또는 관리자인지 확인했으므로 그대로 고침
-    const updated = await this.applyChanges(ref, p.changes, { id: actor.id, isAdmin: true });
+    const updated = await this.applyChanges(ref, p.changes, { id: actor.id, isAdmin: true }, false);
     const rows = await this.db.query(
       `UPDATE edit_proposals SET status = 'accepted', decided_by = $2, decided_at = now() WHERE id = $1 AND status = 'pending' RETURNING id`,
       [id, actor.id],
     );
     if (!rows.length) throw new UserError('이미 처리된 제안이에요.', { code: 'already_decided' });
     log.info(`수정 제안 #${id} 받아들임 (#${ref.id}) by ${actor.id}`);
+    if (actor.id !== ref.uploaderId) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'edit.accept',
+        targetType: 'ref',
+        targetId: ref.id,
+        summary: `다른 사람의 레퍼런스 #${ref.id} 에 온 수정 제안 #${id} 받아들임`,
+        detail: { proposalId: id, proposerId: p.proposer.id, uploaderId: ref.uploaderId },
+      });
+    }
     await this.send(p.proposer.id, `✅ **#${ref.id} · ${updated.title}** 에 보낸 수정 제안이 받아들여졌어요! 점수를 받았어요.\n${this.siteUrl(`#/ref/${ref.id}`)}`);
     return { proposal: await this.require(id), ref: updated };
   }
@@ -293,6 +305,16 @@ export class EditService {
     if (!this.canDecide(p, actor)) throw new ForbiddenError('올린 사람이나 관리자만 거절할 수 있어요.');
     if (p.status !== 'pending') throw new UserError('이미 처리된 제안이에요.', { code: 'already_decided' });
     await this.db.query(`UPDATE edit_proposals SET status = 'rejected', decided_by = $2, decided_at = now() WHERE id = $1`, [id, actor.id]);
+    if (actor.id !== p.refUploaderId) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'edit.reject',
+        targetType: 'ref',
+        targetId: p.refId,
+        summary: `다른 사람의 레퍼런스 #${p.refId} 에 온 수정 제안 #${id} 거절`,
+        detail: { proposalId: id, proposerId: p.proposer.id, reason: reason ?? null },
+      });
+    }
     const ref = await this.refs.get(p.refId);
     const why = cleanText(reason, 300);
     await this.send(

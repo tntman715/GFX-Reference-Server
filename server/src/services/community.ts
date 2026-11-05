@@ -2,6 +2,7 @@ import type { Config } from '../config.js';
 import { categoriesOfGroup, normalizeTagName, TAG_GROUPS, TAG_NAME_RE, type TagGroup } from '../constants.js';
 import type { Db } from '../db/index.js';
 import { authRepo } from '../repos/auth.js';
+import { auditRepo } from '../repos/audit.js';
 import { kvRepo } from '../repos/kv.js';
 import { refsRepo } from '../repos/references.js';
 import { type ScoreRow, scoresRepo } from '../repos/scores.js';
@@ -50,6 +51,7 @@ export class CommunityService {
     const name = this.validTagName(raw);
     const tag = await tagsRepo.add(this.db, group, name, description?.trim() || null, actor.id);
     if (!tag) throw new UserError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 이미 있습니다.`);
+    await auditRepo.add(this.db, { actorId: actor.id, action: 'tag.add', targetType: 'tag', targetId: `${group}:${name}`, summary: `${TAG_GROUPS[group].label} 태그 '${name}' 추가` });
     return tag;
   }
 
@@ -69,6 +71,13 @@ export class CommunityService {
       return true;
     });
     if (!ok) throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 없습니다.`);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'tag.remove',
+      targetType: 'tag',
+      targetId: `${group}:${name}`,
+      summary: `${TAG_GROUPS[group].label} 태그 '${name}' 삭제 (레퍼런스 ${refIds.length}개에서 빠짐)`,
+    });
     return { refIds };
   }
 
@@ -94,7 +103,15 @@ export class CommunityService {
       return true;
     });
     if (!ok) throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${from}\` 가 없습니다.`);
-    return { from, to, refIds: await this.refIdsWithTag(group, to) };
+    const refIds = await this.refIdsWithTag(group, to);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'tag.rename',
+      targetType: 'tag',
+      targetId: `${group}:${to}`,
+      summary: `${TAG_GROUPS[group].label} 태그 '${from}' → '${to}' (레퍼런스 ${refIds.length}개)`,
+    });
+    return { from, to, refIds };
   }
 
   private async refIdsWithTag(group: TagGroup, name: string): Promise<number[]> {
@@ -111,6 +128,14 @@ export class CommunityService {
     if (!(await tagsRepo.setDescription(this.db, group, name, description?.trim() || null))) {
       throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 없습니다.`);
     }
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'tag.describe',
+      targetType: 'tag',
+      targetId: `${group}:${name}`,
+      summary: `${TAG_GROUPS[group].label} 태그 '${name}' 설명 변경`,
+      detail: { description: description?.trim() || null },
+    });
   }
 
   // ── 점수 ────────────────────────────────────────────────
@@ -128,6 +153,14 @@ export class CommunityService {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 점수를 조정할 수 있습니다.');
     if (!Number.isInteger(delta) || delta === 0) throw new UserError('0 이 아닌 정수를 입력해 주세요.');
     await scoresRepo.adjust(this.db, userId, delta, reason, actor.id);
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: 'score.adjust',
+      targetType: 'user',
+      targetId: userId,
+      summary: `점수 ${delta > 0 ? '+' : ''}${delta}${reason ? ` (${reason})` : ''}`,
+      detail: { delta, reason },
+    });
     return this.score(userId);
   }
 

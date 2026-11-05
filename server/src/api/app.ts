@@ -29,6 +29,7 @@ import { toJpegThumb } from '../services/image.js';
 import { DuplicateError } from '../services/references.js';
 import { REPORT_REASONS } from '../services/reports.js';
 import { isResourceKind, RESOURCE_KIND_KEYS, RESOURCE_KINDS, RESOURCE_LIMITS } from '../services/resources.js';
+import { auditRepo } from '../repos/audit.js';
 import { isSafeKey } from '../storage/types.js';
 import { TIERS } from '../tiers.js';
 import type { EditProposal } from '../services/edits.js';
@@ -778,6 +779,34 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return c.json({ request: req });
   });
 
+  // ── 방문 통계 (하루 합계 숫자만 · IP / 쿠키 / 계정은 남기지 않음) ──
+  const viewLimiter = new RateLimiter(120, 60_000);
+  app.post('/api/stats/view', async (c) => {
+    const ip = clientIp(c);
+    if (viewLimiter.take(ip)) {
+      const body = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+      ctx.siteStats.record(body, { ip, ua: c.req.header('user-agent') ?? '', userId: c.get('user')?.id ?? null });
+    }
+    return c.body(null, 204);
+  });
+
+  app.get('/api/admin/stats', async (c) => {
+    await requireAdmin(c);
+    return c.json(await ctx.siteStats.summary(intParam(c.req.query('days'), 30, 1, 365)));
+  });
+
+  // ── 감사 로그: 관리자가 관리자 권한으로 한 일 ──
+  app.get('/api/admin/audit', async (c) => {
+    await requireAdmin(c);
+    const q = c.req.query();
+    const page = intParam(q.page, 1, 1, 10_000);
+    const pageSize = 50;
+    const action = q.action && /^[a-z-]+(\.[a-z-]+)?$/.test(q.action) ? q.action : undefined;
+    const actorId = q.actor && /^\d+$/.test(q.actor) ? q.actor : undefined;
+    const { items, total } = await auditRepo.list(ctx.db, { actorId, action, limit: pageSize, offset: (page - 1) * pageSize });
+    return c.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
+  });
+
   // 관리자: 재생목록 가져오기용 유튜브 API 키 (전체 키는 돌려주지 않고 마지막 4글자만)
   app.get('/api/admin/youtube-key', async (c) => {
     await requireAdmin(c);
@@ -943,10 +972,12 @@ export function createApi(ctx: AppContext): Hono<Env> {
   });
 
   app.post('/api/admin/import/scan', async (c) => {
-    await requireAdmin(c);
+    const user = await requireAdmin(c);
     const body = await c.req.json<{ channelId?: string }>().catch(() => ({}) as { channelId?: string });
     if (!body.channelId || !/^\d+$/.test(body.channelId)) throw new UserError('채널을 골라 주세요.');
-    return c.json({ scan: importer.startScan(body.channelId) });
+    const scan = importer.startScan(body.channelId);
+    await auditRepo.add(ctx.db, { actorId: user.id, action: 'import.scan', targetType: 'channel', targetId: body.channelId, summary: `예전 채널 훑기 시작 (<#${body.channelId}>)` });
+    return c.json({ scan });
   });
 
   // 태그 붙이는 중에 바로 새 태그 만들기 (디스코드 /관리 태그추가 와 같음)
@@ -992,10 +1023,17 @@ export function createApi(ctx: AppContext): Hono<Env> {
   });
 
   app.post('/api/admin/import/names/ignore', async (c) => {
-    await requireAdmin(c);
+    const user = await requireAdmin(c);
     const body = await c.req.json<{ field?: string; names?: string[] }>().catch(() => ({}) as { field?: string; names?: string[] });
     if (!Array.isArray(body.names) || body.names.length < 2) throw new UserError('이름 묶음이 필요해요.');
-    await importer.ignoreGroup(nameField(body.field), body.names.map(String));
+    const names = body.names.map(String);
+    await importer.ignoreGroup(nameField(body.field), names);
+    await auditRepo.add(ctx.db, {
+      actorId: user.id,
+      action: 'names.ignore',
+      targetType: nameField(body.field),
+      summary: `비슷한 이름 묶음 "다른 이름" 처리: ${names.join(', ')}`.slice(0, 300),
+    });
     return c.json({ ok: true });
   });
 

@@ -359,6 +359,34 @@ ALTER TABLE reports DROP CONSTRAINT reports_target_type_check;
 ALTER TABLE reports ADD CONSTRAINT reports_target_type_check CHECK (target_type IN ('ref', 'resource', 'showcase'));
 `,
   },
+  {
+    id: 9,
+    name: 'audit_log_site_stats',
+    sql: `
+-- 감사 로그: 관리자가 관리자 권한으로 한 일 (누가 · 언제 · 무엇을)
+CREATE TABLE audit_log (
+  id           SERIAL PRIMARY KEY,
+  actor_id     TEXT NOT NULL,
+  action       TEXT NOT NULL,
+  target_type  TEXT,
+  target_id    TEXT,
+  summary      TEXT NOT NULL,
+  detail       JSONB,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX audit_log_created_idx ON audit_log (created_at DESC);
+CREATE INDEX audit_log_actor_idx ON audit_log (actor_id, created_at DESC);
+
+-- 방문 통계: 하루 합계 숫자만 저장 (IP · 쿠키 · 계정 같은 개인 정보는 저장하지 않음)
+CREATE TABLE site_stats_daily (
+  day     DATE NOT NULL,
+  metric  TEXT NOT NULL,
+  key     TEXT NOT NULL DEFAULT '',
+  count   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, metric, key)
+);
+`,
+  },
 ];
 
 function sqlString(s: string): string {

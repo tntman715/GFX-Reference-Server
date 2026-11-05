@@ -3,6 +3,7 @@ import { usersRepo } from '../repos/users.js';
 import type { Actor, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 
 const log = logger('reports');
 
@@ -144,6 +145,14 @@ export class ReportService {
        WHERE target_type = $1 AND target_id = $2 AND status = 'open'`,
       [report.targetType, report.targetId, status, actor.id],
     );
+    await auditRepo.add(this.db, {
+      actorId: actor.id,
+      action: status === 'resolved' ? 'report.resolve' : 'report.dismiss',
+      targetType: report.targetType,
+      targetId: report.targetId,
+      summary: `신고 #${id} ${status === 'resolved' ? '처리 완료' : '문제 없음'} (${report.targetType} #${report.targetId})`,
+      detail: { reportId: id, reason: report.reason },
+    });
     return this.require(id);
   }
 

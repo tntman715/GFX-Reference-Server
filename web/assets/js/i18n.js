@@ -168,6 +168,9 @@ const STRINGS = {
     'account.import': '레퍼런스 가져오기',
     'account.tags': '태그 관리 (관리자)',
     'account.reports': '신고 목록 (관리자)',
+    'account.stats': '사이트 통계 (관리자)',
+    'account.audit': '감사 로그 (관리자)',
+    'footer.privacy': '개인정보 안내 · 추적하지 않아요',
 
     'detail.delete': '삭제',
     'detail.deleteConfirm': '#{id} {title} 을(를) 지울까요? 원본 · 미리보기 · 받은 반응이 모두 지워지고 점수도 빠져요. 되돌릴 수 없어요.',
@@ -459,6 +462,9 @@ const STRINGS = {
     'account.import': 'Import references',
     'account.tags': 'Manage tags (admin)',
     'account.reports': 'Reports (admin)',
+    'account.stats': 'Site stats (admin)',
+    'account.audit': 'Audit log (admin)',
+    'footer.privacy': 'Privacy · we don’t track you',
 
     'detail.delete': 'Delete',
     'detail.deleteConfirm': 'Delete #{id} {title}? The original, preview and reactions are removed and the points go away. This cannot be undone.',

@@ -69,6 +69,7 @@ async function main() {
     log.info(`${signal} 수신 — 종료합니다.`);
     server.close();
     await bot?.stop().catch(() => undefined);
+    await ctx.siteStats.stop().catch(() => undefined);
     await ctx.db.close().catch(() => undefined);
     process.exit(0);
   };

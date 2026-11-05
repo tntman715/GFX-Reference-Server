@@ -5,6 +5,7 @@ import { usersRepo } from '../repos/users.js';
 import type { Actor, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
+import { auditRepo } from '../repos/audit.js';
 import type { ReferenceService } from './references.js';
 import { youtubeId } from './resources.js';
 
@@ -128,6 +129,16 @@ export class VideoService {
       }
     });
     log.info(`#${refId} 제작과정 영상 ${video.youtubeId} 삭제 by ${actor.id}`);
+    if (actor.id !== video.addedBy.id && actor.id !== ref.uploaderId) {
+      await auditRepo.add(this.db, {
+        actorId: actor.id,
+        action: 'video.delete',
+        targetType: 'ref',
+        targetId: refId,
+        summary: `레퍼런스 #${refId} 에 다른 사람이 붙인 제작과정 영상 삭제 (${video.youtubeId})`,
+        detail: { addedBy: video.addedBy.id, youtubeId: video.youtubeId },
+      });
+    }
     if (tagRemoved) this.refs.refreshArchives([refId]);
   }
 }

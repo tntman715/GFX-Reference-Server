@@ -3,6 +3,7 @@ import { discordIcon, handleApiError, openLogin } from './components.js';
 import { avatarSrc, clear, h, spinner, splitText, toast } from './dom.js';
 import { applyStatic, getLang, onLangChange, setLang, t } from './i18n.js';
 import { store } from './store.js';
+import { mountAudit, mountStats } from './views/admin.js';
 import { mountBoard, mountBoards } from './views/boards.js';
 import { mountColors } from './views/colors.js';
 import { openDetail } from './views/detail.js';
@@ -12,6 +13,7 @@ import { mountFeed } from './views/feed.js';
 import { mountImport } from './views/import.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
+import { mountPrivacy } from './views/privacy.js';
 import { mountProfile } from './views/profile.js';
 import { mountReports } from './views/reports.js';
 import { mountResource, mountResources } from './views/resources.js';
@@ -53,6 +55,9 @@ function matchView(path) {
   if (path === '/edits') return { key: 'edits', mount: mountEdits };
   if (path === '/tags') return { key: 'tags', mount: mountTags };
   if (path === '/reports') return { key: 'reports', mount: mountReports };
+  if (path === '/stats') return { key: 'stats', mount: mountStats };
+  if (path === '/audit') return { key: 'audit', mount: mountAudit };
+  if (path === '/privacy') return { key: 'privacy', mount: mountPrivacy };
   if (path === '/assets') return { key: 'assets', mount: mountResources, extra: { kind: 'asset' } };
   if (path === '/plugins') return { key: 'plugins', mount: mountResources, extra: { kind: 'plugin' } };
   if (path === '/texturepacks') return { key: 'texturepacks', mount: mountResources, extra: { kind: 'texturepack' } };
@@ -64,8 +69,56 @@ function matchView(path) {
   return null;
 }
 
+// ── 방문 통계 (관리자 전용 화면용) ─────────────────────
+// 어떤 종류의 페이지를 열었는지만 서버에 알림. 서버는 하루 합계 숫자만 저장하고
+// IP · 쿠키 · 계정은 남기지 않음. 브라우저에서 "추적 안 함" / GPC 를 켰으면 아예 보내지 않음.
+const STAT_PAGE = {
+  explore: 'explore',
+  nongd: 'nongd',
+  feed: 'feed',
+  popular: 'popular',
+  colors: 'colors',
+  leaderboard: 'ranking',
+  assets: 'assets',
+  plugins: 'plugins',
+  texturepacks: 'texturepacks',
+  showcase: 'showcase',
+  res: 'resource',
+  user: 'profile',
+  board: 'boards',
+  boards: 'boards',
+  tags: 'tags',
+  edits: 'edits',
+  import: 'import',
+  reports: 'reports',
+  privacy: 'privacy',
+  ref: 'detail',
+};
+const dnt = navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
+let firstView = true;
+let lastCounted = null;
+function countView(key) {
+  // 언어를 바꿔서 같은 화면을 다시 그릴 때는 세지 않음
+  if (key === lastCounted) return;
+  lastCounted = key;
+  const page = STAT_PAGE[String(key).split(':')[0]];
+  if (dnt || !page) return; // 관리자 화면(통계 · 감사 로그)은 세지 않음
+  let referrer = '';
+  if (firstView) {
+    try {
+      if (document.referrer && new URL(document.referrer).host !== location.host) referrer = document.referrer;
+    } catch {
+      /* 이상한 주소는 무시 */
+    }
+  }
+  const body = JSON.stringify({ page, lang: getLang(), first: firstView, referrer });
+  firstView = false;
+  fetch('/api/stats/view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'same-origin', keepalive: true }).catch(() => undefined);
+}
+
 function mountBase(path, params) {
   const v = matchView(path) ?? matchView('/');
+  if (current.key !== v.key) countView(v.key);
   if (current.key === v.key && current.view?.update) {
     current.view.update(params);
   } else if (current.key !== v.key) {
@@ -97,6 +150,7 @@ function route() {
     const id = Number(m[1]);
     if (!current.key) mountBase('/', new URLSearchParams());
     if (detail?.id === id) return;
+    countView(`ref:${id}`);
     if (detail) {
       const old = detail;
       detail = null;
@@ -161,6 +215,8 @@ function renderAccount() {
           me.openReports ? h('span.badge', String(me.openReports)) : null,
         )
       : null,
+    me.isAdmin ? h('a', { href: '#/stats', onclick: () => menu.classList.remove('open') }, t('account.stats')) : null,
+    me.isAdmin ? h('a', { href: '#/audit', onclick: () => menu.classList.remove('open') }, t('account.audit')) : null,
     me.isAdmin && me.pendingShowcase
       ? h(
           'a',

@@ -301,6 +301,64 @@ ALTER TABLE refs ADD COLUMN hq_width INTEGER;
 ALTER TABLE refs ADD COLUMN hq_height INTEGER;
 `,
   },
+  {
+    id: 8,
+    name: 'tag_groups_showcase',
+    sql: `
+-- 비지메는 지메와 태그를 따로 씀 (같은 이름이 두 태그군에 하나씩 있을 수 있음)
+ALTER TABLE tags ADD COLUMN grp TEXT NOT NULL DEFAULT 'gd' CHECK (grp IN ('gd', 'nongd'));
+ALTER TABLE tags DROP CONSTRAINT tags_name_key;
+CREATE UNIQUE INDEX tags_grp_name_idx ON tags (grp, name);
+
+-- 비지메 레퍼런스에 달려 있던 태그는 같은 이름으로 비지메 태그군에 만들고 그쪽으로 옮김
+INSERT INTO tags (grp, name, description, created_by)
+  SELECT DISTINCT ON (t.name) 'nongd', t.name, t.description, t.created_by
+  FROM tags t JOIN ref_tags rt ON rt.tag_id = t.id JOIN refs r ON r.id = rt.ref_id
+  WHERE r.category = 'non_gm'
+  ORDER BY t.name;
+INSERT INTO tags (grp, name, description, created_by) VALUES ('nongd', 'speedart', '제작과정(스피드아트) 영상이 붙어 있음', 'system')
+  ON CONFLICT (grp, name) DO NOTHING;
+UPDATE ref_tags rt SET tag_id = n.id
+  FROM refs r, tags o, tags n
+  WHERE r.id = rt.ref_id AND r.category = 'non_gm' AND o.id = rt.tag_id AND o.grp = 'gd' AND n.grp = 'nongd' AND n.name = o.name;
+
+-- 쇼케이스: 유튜브 영상만. 제목 · 제작자는 유튜브 정보 그대로, 등록한 사람이 점수를 받음
+CREATE TABLE showcase_requests (
+  id            SERIAL PRIMARY KEY,
+  playlist_id   TEXT NOT NULL,
+  title         TEXT,
+  channel_name  TEXT,
+  item_count    INTEGER,
+  requested_by  TEXT NOT NULL REFERENCES users(discord_id),
+  status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'done', 'failed')),
+  decided_by    TEXT,
+  decided_at    TIMESTAMPTZ,
+  imported      INTEGER NOT NULL DEFAULT 0,
+  skipped       INTEGER NOT NULL DEFAULT 0,
+  error         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX showcase_requests_status_idx ON showcase_requests (status, created_at);
+
+CREATE TABLE showcases (
+  id            SERIAL PRIMARY KEY,
+  youtube_id    TEXT NOT NULL UNIQUE,
+  title         TEXT NOT NULL,
+  channel_name  TEXT,
+  channel_url   TEXT,
+  added_by      TEXT NOT NULL REFERENCES users(discord_id),
+  request_id    INTEGER REFERENCES showcase_requests(id) ON DELETE SET NULL,
+  published_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX showcases_added_by_idx ON showcases (added_by);
+CREATE INDEX showcases_created_idx ON showcases (created_at DESC);
+
+-- 쇼케이스 영상도 신고할 수 있게
+ALTER TABLE reports DROP CONSTRAINT reports_target_type_check;
+ALTER TABLE reports ADD CONSTRAINT reports_target_type_check CHECK (target_type IN ('ref', 'resource', 'showcase'));
+`,
+  },
 ];
 
 function sqlString(s: string): string {

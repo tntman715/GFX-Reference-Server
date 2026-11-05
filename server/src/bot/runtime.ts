@@ -30,8 +30,13 @@ import {
   isCategory,
   isColorFamily,
   isPopularPeriod,
+  isTagGroup,
   parseTagList,
   POPULAR_PERIODS,
+  TAG_GROUP_KEYS,
+  TAG_GROUPS,
+  type TagGroup,
+  tagGroupOf,
 } from '../constants.js';
 import { reactionPointsText } from '../config.js';
 import type { AppContext, BotBridge } from '../context.js';
@@ -48,6 +53,7 @@ import { HighlightScheduler } from './highlight.js';
 import { TierRoleSync } from './tier-roles.js';
 import { DiscordResourceStore } from './resource-store.js';
 import type { ReportNotice } from '../services/reports.js';
+import type { ShowcaseRequest } from '../services/showcase.js';
 import { RESOURCE_KINDS, type ResourceKind } from '../services/resources.js';
 import { TIERS, tierInfo } from '../tiers.js';
 import { DiscordImportSource } from './import-source.js';
@@ -71,7 +77,7 @@ export class BotRuntime implements BotBridge {
   private pendingUploads = new TtlMap<string, PendingUpload>(10 * 60_000, 200);
   private highlight: HighlightScheduler;
   readonly tiers: TierRoleSync;
-  private tagCache: { at: number; names: string[] } | null = null;
+  private tagCache: { at: number; names: Record<TagGroup, string[]> } | null = null;
 
   constructor(private readonly ctx: AppContext) {
     this.client = new Client({
@@ -185,6 +191,44 @@ export class BotRuntime implements BotBridge {
       ],
       allowedMentions: { parse: [] },
     });
+  }
+
+  /** 쇼케이스 재생목록 요청을 관리자 채널(REPORT_CHANNEL_ID)에 올림. 버튼으로 바로 승인 / 거절 */
+  async postShowcaseRequest(req: ShowcaseRequest, links: { playlistUrl: string; adminUrl: string }): Promise<void> {
+    const channelId = this.config.discord.reportChannelId;
+    if (!channelId) {
+      log.warn(`쇼케이스 요청 #${req.id} — REPORT_CHANNEL_ID 가 없어 디스코드 알림을 보내지 않았습니다.`);
+      return;
+    }
+    const ch = await this.client.channels.fetch(channelId);
+    if (!ch?.isSendable()) throw new Error('관리자 알림 채널에 메시지를 보낼 수 없습니다.');
+    await ch.send({
+      embeds: [this.showcaseRequestEmbed(req, links.playlistUrl)],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`sc:approve:${req.id}`).setLabel('승인하고 가져오기').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`sc:reject:${req.id}`).setLabel('거절').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setURL(links.playlistUrl).setLabel('재생목록 보기').setStyle(ButtonStyle.Link),
+          new ButtonBuilder().setURL(links.adminUrl).setLabel('사이트에서 처리').setStyle(ButtonStyle.Link),
+        ),
+      ],
+      allowedMentions: { parse: [] },
+    });
+  }
+
+  private showcaseRequestEmbed(req: ShowcaseRequest, playlistUrl: string, result?: string) {
+    const embed = new EmbedBuilder()
+      .setTitle(`📺 쇼케이스 재생목록 요청 #${req.id} · ${req.title ?? req.playlistId}`.slice(0, 256))
+      .setURL(playlistUrl)
+      .setColor(result ? 0x777777 : 0xff7a1a)
+      .addFields(
+        { name: '영상 수', value: `${req.itemCount ?? '?'}개 (최대 +${(req.itemCount ?? 0) * this.config.scoring.pointsPerShowcase}점)`, inline: true },
+        { name: '채널', value: req.channelName ?? '-', inline: true },
+        { name: '요청한 사람', value: `<@${req.requestedBy.id}>`, inline: true },
+      )
+      .setTimestamp(new Date(req.createdAt));
+    if (result) embed.setDescription(result);
+    return embed;
   }
 
   async notifyUser(userId: string, content: string): Promise<void> {
@@ -356,7 +400,7 @@ export class BotRuntime implements BotBridge {
     }
     // 태그는 이미지 다운로드 전에 먼저 확인 (오타 시 빠르게 안내)
     const tags = parseTagList(i.options.getString('tags'));
-    await this.refs.resolveTags(tags);
+    await this.refs.resolveTags(tags, tagGroupOf(category));
 
     await i.deferReply({ flags: MessageFlags.Ephemeral });
     const res = await fetch(att.url);
@@ -661,15 +705,17 @@ export class BotRuntime implements BotBridge {
 
   private async cmdTags(i: ChatInputCommandInteraction) {
     const tags = await this.community.listTags();
+    const section = (g: TagGroup) => {
+      const list = tags.filter((t) => t.group === g);
+      return [
+        `**${TAG_GROUPS[g].label} 태그** (${list.length}개)`,
+        list.map((t) => `\`${t.name}\` — ${t.description ?? ''} (${t.count})`).join('\n') || '태그가 없어요.',
+      ].join('\n');
+    };
     const embed = new EmbedBuilder()
       .setTitle(`🏷️ 태그 목록 (${tags.length}개)`)
       .setColor(BRAND_COLOR)
-      .setDescription(
-        tags
-          .map((t) => `\`${t.name}\` — ${t.description ?? ''} (${t.count})`)
-          .join('\n')
-          .slice(0, 4000) || '태그가 없어요.',
-      )
+      .setDescription(TAG_GROUP_KEYS.map(section).join('\n\n').slice(0, 4000))
       .setFooter({ text: '업로드할 때 "태그" 옵션에 쉼표로 구분해서 입력하세요. 관리자는 /관리 태그추가 로 늘릴 수 있어요.' });
     await i.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   }
@@ -680,28 +726,31 @@ export class BotRuntime implements BotBridge {
     const sub = i.options.getSubcommand();
     const done = (content: string) => i.reply({ content, flags: MessageFlags.Ephemeral });
     this.tagCache = null;
+    const rawGroup = sub.startsWith('tag-') ? i.options.getString('group') : null;
+    const group: TagGroup = isTagGroup(rawGroup) ? rawGroup : 'gd';
+    const gl = TAG_GROUPS[group].label;
     switch (sub) {
       case 'tag-add': {
-        const t = await this.community.addTag(i.options.getString('name', true), i.options.getString('description'), actor);
-        return void (await done(`🏷️ \`${t.name}\` 태그를 추가했어요.`));
+        const t = await this.community.addTag(i.options.getString('name', true), i.options.getString('description'), actor, group);
+        return void (await done(`🏷️ ${gl} 태그 \`${t.name}\` 를 추가했어요.`));
       }
       case 'tag-remove': {
         const name = i.options.getString('name', true);
-        const { refIds } = await this.community.removeTag(name, actor);
+        const { refIds } = await this.community.removeTag(name, actor, group);
         this.refs.refreshArchives(refIds);
-        return void (await done(`🗑️ \`${name}\` 태그를 삭제했어요. (레퍼런스 ${refIds.length}개에서 빠짐)`));
+        return void (await done(`🗑️ ${gl} 태그 \`${name}\` 를 삭제했어요. (레퍼런스 ${refIds.length}개에서 빠짐)`));
       }
       case 'tag-rename': {
         const from = i.options.getString('from', true);
         const to = i.options.getString('to', true);
-        const res = await this.community.renameTag(from, to, actor);
+        const res = await this.community.renameTag(from, to, actor, group);
         this.refs.refreshArchives(res.refIds);
-        return void (await done(`✏️ \`${res.from}\` → \`${res.to}\` (레퍼런스 ${res.refIds.length}개에 적용)`));
+        return void (await done(`✏️ ${gl} 태그 \`${res.from}\` → \`${res.to}\` (레퍼런스 ${res.refIds.length}개에 적용)`));
       }
       case 'tag-describe': {
         const name = i.options.getString('name', true);
-        await this.community.describeTag(name, i.options.getString('description'), actor);
-        return void (await done(`✏️ \`${name}\` 설명을 바꿨어요.`));
+        await this.community.describeTag(name, i.options.getString('description'), actor, group);
+        return void (await done(`✏️ ${gl} 태그 \`${name}\` 설명을 바꿨어요.`));
       }
       case 'score': {
         const user = i.options.getUser('user', true);
@@ -769,6 +818,16 @@ export class BotRuntime implements BotBridge {
   private async onButton(i: ButtonInteraction): Promise<void> {
     const [kind, a, b] = i.customId.split(':');
     switch (kind) {
+      case 'sc': {
+        // 쇼케이스 재생목록 요청 승인 / 거절 (관리자만)
+        const actor = actorOf(i, this.config);
+        if (!actor.isAdmin) return void (await i.reply({ content: '관리자만 처리할 수 있어요.', flags: MessageFlags.Ephemeral }));
+        const approve = a === 'approve';
+        const req = await this.ctx.showcase.decide(Number(b), approve, actor);
+        const result = approve ? `✅ <@${i.user.id}> 님이 승인했어요. 가져오는 중…` : `🙅 <@${i.user.id}> 님이 거절했어요.`;
+        await i.update({ embeds: [this.showcaseRequestEmbed(req, `https://www.youtube.com/playlist?list=${req.playlistId}`, result)], components: [] });
+        return;
+      }
       case 'v': {
         if (b === 'noop') return void (await i.deferUpdate());
         const session = this.viewer.get(a);
@@ -846,11 +905,30 @@ export class BotRuntime implements BotBridge {
 
   // ── 자동완성 ────────────────────────────────────────────
 
-  private async tagNames(): Promise<string[]> {
-    if (this.tagCache && Date.now() - this.tagCache.at < 60_000) return this.tagCache.names;
-    const names = await this.community.tagNames();
-    this.tagCache = { at: Date.now(), names };
-    return names;
+  /** group 을 비우면 두 태그군 이름을 모두 (중복 없이) */
+  private async tagNames(group?: TagGroup): Promise<string[]> {
+    if (!this.tagCache || Date.now() - this.tagCache.at > 60_000) {
+      const [gd, nongd] = await Promise.all([this.community.tagNames('gd'), this.community.tagNames('nongd')]);
+      this.tagCache = { at: Date.now(), names: { gd, nongd } };
+    }
+    const names = this.tagCache.names;
+    return group ? names[group] : [...new Set([...names.gd, ...names.nongd])];
+  }
+
+  /** 자동완성 중인 명령어에서 태그군 알아내기 (분류 · 태그군 옵션이 있으면 그것으로) */
+  private autocompleteGroup(i: AutocompleteInteraction): TagGroup | undefined {
+    const opt = (name: string): string | null => {
+      try {
+        return i.options.getString(name);
+      } catch {
+        return null;
+      }
+    };
+    const g = opt('group');
+    if (isTagGroup(g)) return g;
+    if (i.commandName === 'admin') return 'gd';
+    const c = opt('category');
+    return isCategory(c) ? tagGroupOf(c) : i.commandName === 'upload' ? 'gd' : undefined;
   }
 
   private async onAutocomplete(i: AutocompleteInteraction): Promise<void> {
@@ -862,7 +940,7 @@ export class BotRuntime implements BotBridge {
       // 에셋 · 플러그인 · 텍스쳐팩 명령어는 그 종류의 태그로
       const kindByCommand: Record<string, ResourceKind> = { 'upload-asset': 'asset', 'upload-plugin': 'plugin', 'upload-texturepack': 'texturepack' };
       const kind = kindByCommand[i.commandName];
-      const all = kind ? (await this.ctx.resources.listTags(kind)).map((t) => t.name) : await this.tagNames();
+      const all = kind ? (await this.ctx.resources.listTags(kind)).map((t) => t.name) : await this.tagNames(this.autocompleteGroup(i));
       const parts = value.split(',');
       const last = parts.pop()!.trim().toLowerCase();
       const prefix = parts.map((p) => p.trim()).filter(Boolean);
@@ -874,7 +952,7 @@ export class BotRuntime implements BotBridge {
       });
       if (!choices.length && value) choices = [{ name: value.slice(0, 100), value: value.slice(0, 100) }];
     } else if (focused.name === 'name' || focused.name === 'from') {
-      const all = await this.tagNames();
+      const all = await this.tagNames(this.autocompleteGroup(i));
       choices = all.filter((t) => t.includes(value.toLowerCase())).slice(0, 25).map((t) => ({ name: t, value: t }));
     } else if (focused.name === 'creator') {
       // "A, B" 처럼 여러 명을 적는 중이면 마지막 이름만 찾아서 앞부분에 이어 붙임

@@ -1,4 +1,6 @@
 import type { Db } from '../db/index.js';
+import { tagGroupOf } from '../constants.js';
+import { tagsRepo } from '../repos/tags.js';
 import { usersRepo } from '../repos/users.js';
 import type { Actor, UserInfo } from '../types.js';
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
@@ -71,13 +73,8 @@ export class VideoService {
     return rows.map(mapRow);
   }
 
-  private async speedartTagId(): Promise<number> {
-    await this.db.query(
-      `INSERT INTO tags (name, description, created_by) VALUES ($1, '제작과정(스피드아트) 영상이 붙어 있음', 'system') ON CONFLICT (name) DO NOTHING`,
-      [SPEEDART_TAG],
-    );
-    const rows = await this.db.query<{ id: number }>('SELECT id FROM tags WHERE name = $1', [SPEEDART_TAG]);
-    return Number(rows[0].id);
+  private speedartTagId(category: string): Promise<number> {
+    return tagsRepo.ensure(this.db, tagGroupOf(category), SPEEDART_TAG, '제작과정(스피드아트) 영상이 붙어 있음');
   }
 
   async add(refId: number, url: unknown, user: UserInfo): Promise<RefVideo> {
@@ -93,7 +90,7 @@ export class VideoService {
     const found = await this.lookup(id);
     if (!found.ok) throw new UserError('유튜브에서 영상을 찾을 수 없어요. 공개(또는 일부 공개) 영상인지 확인해 주세요.', { code: 'video_not_found' });
 
-    const tagId = await this.speedartTagId();
+    const tagId = await this.speedartTagId(ref.category);
     const videoId = await this.db.tx(async (q) => {
       await usersRepo.upsert(q, user);
       const rows = await q.query<{ id: number }>('INSERT INTO ref_videos (ref_id, youtube_id, title, added_by) VALUES ($1, $2, $3, $4) RETURNING id', [
@@ -124,7 +121,7 @@ export class VideoService {
       const left = await q.query<{ n: number }>('SELECT count(*)::int AS n FROM ref_videos WHERE ref_id = $1', [refId]);
       if (Number(left[0]?.n ?? 0) === 0) {
         const rows = await q.query(
-          'DELETE FROM ref_tags WHERE ref_id = $1 AND tag_id = (SELECT id FROM tags WHERE name = $2) RETURNING ref_id',
+          'DELETE FROM ref_tags WHERE ref_id = $1 AND tag_id IN (SELECT id FROM tags WHERE name = $2) RETURNING ref_id',
           [refId, SPEEDART_TAG],
         );
         tagRemoved = rows.length > 0;

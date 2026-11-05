@@ -109,6 +109,10 @@ const EnvSchema = z.object({
   POINTS_PER_ASSET: z.coerce.number().min(0).default(10),
   /** 레퍼런스에 제작과정 유튜브 영상을 붙이면 받는 점수 */
   POINTS_PER_VIDEO: z.coerce.number().min(0).default(10),
+  /** 쇼케이스에 유튜브 영상을 올리면 영상마다 받는 점수 (재생목록도 영상마다) */
+  POINTS_PER_SHOWCASE: z.coerce.number().min(0).default(3),
+  /** 쇼케이스 재생목록 가져오기용 유튜브 Data API 키 (없으면 영상 하나씩만) */
+  YOUTUBE_API_KEY: optionalString,
   POINTS_PER_PLUGIN: z.coerce.number().min(0).default(20),
   POINTS_PER_TEXTUREPACK: z.coerce.number().min(0).default(20),
   /** 에셋 · 플러그인 · 텍스쳐팩 파일 최대 크기 (디스코드 봇 첨부 한도: 부스트 없는 서버 10MB) */
@@ -174,6 +178,7 @@ export interface Config {
     resourceMaxBytes: number;
   };
   scoring: ScoringConfig;
+  youtube: { apiKey?: string };
   reactionEmojis: string[];
   weeklyHighlight: boolean;
   timezone: string;
@@ -188,6 +193,8 @@ export interface ScoringConfig {
   pointsPerResource: Record<'asset' | 'plugin' | 'texturepack', number>;
   /** 제작과정 영상 붙이기 점수 */
   pointsPerVideo: number;
+  /** 쇼케이스 영상 하나 올리기 점수 */
+  pointsPerShowcase: number;
   /** reactionPoints 에 없는 반응의 점수 */
   pointsPerReaction: number;
   /** 반응 이모지별 점수. 설정된 반응 이모지는 모두 들어 있음 */
@@ -318,9 +325,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       pointsPerEdit: e.POINTS_PER_EDIT ?? e.POINTS_PER_UPLOAD / 2,
       pointsPerResource: { asset: e.POINTS_PER_ASSET, plugin: e.POINTS_PER_PLUGIN, texturepack: e.POINTS_PER_TEXTUREPACK },
       pointsPerVideo: e.POINTS_PER_VIDEO,
+      pointsPerShowcase: e.POINTS_PER_SHOWCASE,
       pointsPerReaction: e.POINTS_PER_REACTION,
       reactionPoints: pointsByEmoji,
     },
+    youtube: { apiKey: e.YOUTUBE_API_KEY },
     reactionEmojis,
     weeklyHighlight: e.WEEKLY_HIGHLIGHT,
     timezone: e.TIMEZONE,

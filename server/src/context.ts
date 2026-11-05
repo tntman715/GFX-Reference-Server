@@ -8,6 +8,7 @@ import type { ImportService, ImportSource } from './services/importer.js';
 import type { ReferenceService } from './services/references.js';
 import type { ReportNotice, ReportService } from './services/reports.js';
 import type { ResourceService } from './services/resources.js';
+import type { ShowcaseRequest, ShowcaseService } from './services/showcase.js';
 import type { VideoService } from './services/videos.js';
 import type { PreviewStorage } from './storage/types.js';
 import type { Reference } from './types.js';
@@ -28,6 +29,8 @@ export interface BotBridge {
   notifyUser?(userId: string, content: string): Promise<void>;
   /** 신고를 관리자 전용 채널에 올리기 */
   postReport?(notice: ReportNotice): Promise<void>;
+  /** 쇼케이스 재생목록 가져오기 요청을 관리자 채널에 올리기 (승인 / 거절 버튼) */
+  postShowcaseRequest?(req: ShowcaseRequest, links: { playlistUrl: string; adminUrl: string }): Promise<void>;
   /** 예전 채팅 채널에서 레퍼런스를 옮겨올 때 메시지/원본을 읽는 기능 */
   importSource?: ImportSource;
 }
@@ -44,5 +47,6 @@ export interface AppContext {
   resources: ResourceService;
   reports: ReportService;
   videos: VideoService;
+  showcase: ShowcaseService;
   bot: BotBridge | null;
 }

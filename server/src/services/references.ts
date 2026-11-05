@@ -2,7 +2,17 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import type { OriginalArchive, OriginalFile } from '../archive/types.js';
 import { type Config, normalizeEmoji } from '../config.js';
-import { CATEGORIES, type Category, type ColorFamily, isCategory, normalizeTagName, type PopularPeriod, periodSince } from '../constants.js';
+import {
+  CATEGORIES,
+  type Category,
+  type ColorFamily,
+  isCategory,
+  normalizeTagName,
+  type PopularPeriod,
+  periodSince,
+  type TagGroup,
+  tagGroupOf,
+} from '../constants.js';
 import type { Db } from '../db/index.js';
 import { reactionsRepo } from '../repos/reactions.js';
 import { refsRepo, type SearchOptions } from '../repos/references.js';
@@ -162,20 +172,26 @@ export class ReferenceService {
 
   // ── 태그 검증 ───────────────────────────────────────────
 
-  /** 입력된 태그 이름을 정규화하고 존재하는 태그인지 확인 */
-  async resolveTags(names: string[]): Promise<{ id: number; name: string }[]> {
+  /** 입력된 태그 이름을 정규화하고 그 태그군(지메 / 비지메)에 있는 태그인지 확인 */
+  async resolveTags(names: string[], group: TagGroup = 'gd'): Promise<{ id: number; name: string }[]> {
     const normalized = [...new Set(names.map(normalizeTagName).filter(Boolean))];
     if (normalized.length > LIMITS.tagsPerRef) throw new UserError(`태그는 최대 ${LIMITS.tagsPerRef}개까지 달 수 있습니다.`);
-    const found = await tagsRepo.findByNames(this.db, normalized);
+    const found = await tagsRepo.findByNames(this.db, group, normalized);
     const missing = normalized.filter((n) => !found.some((f) => f.name === n));
     if (missing.length) {
-      const all = await tagsRepo.names(this.db);
+      const all = await tagsRepo.names(this.db, group);
       throw new UserError(
         `없는 태그입니다: ${missing.map((m) => `\`${m}\``).join(', ')}\n사용 가능한 태그: ${all.map((t) => `\`${t}\``).join(', ')}`,
         { code: 'unknown_tag' },
       );
     }
     return found;
+  }
+
+  /** 분류를 지메 ↔ 비지메로 옮길 때: 새 태그군에도 있는 태그만 남김 */
+  async keepTagsIn(names: string[], group: TagGroup): Promise<{ id: number; name: string }[]> {
+    const normalized = [...new Set(names.map(normalizeTagName).filter(Boolean))].slice(0, LIMITS.tagsPerRef);
+    return tagsRepo.findByNames(this.db, group, normalized);
   }
 
   // ── 생성 ────────────────────────────────────────────────
@@ -195,7 +211,7 @@ export class ReferenceService {
       { name: clean(input.uploader.displayName ?? input.uploader.username, LIMITS.creatorName)!, id: input.creatorId ?? null },
     ];
     const title = clean(input.title, LIMITS.title) ?? mapName ?? titleFromFilename(file.filename);
-    const tags = await this.resolveTags(input.tags ?? []);
+    const tags = await this.resolveTags(input.tags ?? [], tagGroupOf(input.category));
 
     const img = await processImage(file.buffer, {
       previewMaxSize: this.config.upload.previewMaxSize,
@@ -386,7 +402,12 @@ export class ReferenceService {
       for (const t of input.removeTags ?? []) base.delete(normalizeTagName(t));
       tagNames = [...base];
     }
-    const tags = tagNames ? await this.resolveTags(tagNames) : null;
+    // 지메 ↔ 비지메로 옮기면 태그군이 바뀌므로 새 태그군에 있는 태그만 남김
+    const group = tagGroupOf(category);
+    const groupChanged = group !== tagGroupOf(ref.category);
+    let tags: { id: number; name: string }[] | null = null;
+    if (groupChanged) tags = await this.keepTagsIn(tagNames ?? ref.tags, group);
+    else if (tagNames) tags = await this.resolveTags(tagNames, group);
 
     await this.db.tx(async (q) => {
       await refsRepo.update(q, id, patch);

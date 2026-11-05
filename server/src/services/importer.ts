@@ -1,4 +1,4 @@
-import { type Category, isCategory } from '../constants.js';
+import { type Category, isCategory, tagGroupOf } from '../constants.js';
 import type { Db } from '../db/index.js';
 import { kvRepo } from '../repos/kv.js';
 import type { UserInfo } from '../types.js';
@@ -340,7 +340,13 @@ export class ImportService {
     const item = userId ? await this.claim(id, userId) : await this.get(id);
     if (item.status === 'imported') throw new UserError('이미 옮긴 레퍼런스예요.');
     if (patch.category !== undefined && !isCategory(patch.category)) throw new UserError('잘못된 분류입니다.');
-    const tags = patch.tags ? (await this.refs.resolveTags(patch.tags)).map((t) => t.name) : item.tags;
+    // 분류를 지메 ↔ 비지메로 바꾸면 새 태그군에 있는 태그만 남김
+    const group = tagGroupOf(patch.category ?? item.category);
+    const tags = patch.tags
+      ? (await this.refs.resolveTags(patch.tags, group)).map((t) => t.name)
+      : group !== tagGroupOf(item.category)
+        ? (await this.refs.keepTagsIn(item.tags, group)).map((t) => t.name)
+        : item.tags;
     const clean = (v: string | null | undefined, max: number, cur: string | null) =>
       v === undefined ? cur : (v ?? '').replace(/\s+/g, ' ').trim().slice(0, max) || null;
     await this.db.query(

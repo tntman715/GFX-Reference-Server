@@ -31,6 +31,8 @@ export interface SearchFilters {
   /** 제목 / 맵 이름 / 제작자 / 태그 / #번호 */
   q?: string;
   category?: Category;
+  /** 이 분류들 중 하나 (지메만 / 비지메만 볼 때) */
+  categories?: Category[];
   /** 모두 포함해야 함 (AND) */
   tags?: string[];
   color?: ColorFamily;
@@ -145,6 +147,7 @@ export function mapRef(row: Row): Reference {
 function buildWhere(f: SearchFilters, p: Params): string[] {
   const where: string[] = [];
   if (f.category) where.push(`r.category = ${p.add(f.category)}`);
+  else if (f.categories?.length) where.push(`r.category = ANY(${p.add(f.categories)}::text[])`);
   if (f.uploaderId) where.push(`r.uploader_id = ${p.add(f.uploaderId)}`);
   if (f.creator?.trim()) where.push(`r.creator_name ILIKE ${p.add(`%${escapeLike(f.creator.trim())}%`)}`);
   if (f.ids) where.push(`r.id = ANY(${p.add(f.ids)}::int[])`);

@@ -6,7 +6,7 @@ import { logger } from '../util/log.js';
 
 const log = logger('reports');
 
-export type ReportTargetType = 'ref' | 'resource';
+export type ReportTargetType = 'ref' | 'resource' | 'showcase';
 export type ReportStatus = 'open' | 'resolved' | 'dismissed';
 
 /** 신고 이유 (화면에서 고르는 것) */

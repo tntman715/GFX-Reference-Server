@@ -327,7 +327,7 @@ export function mountImport(root) {
     const tagGrid = h('div.imp-tags');
     const renderTags = () => {
       clear(tagGrid).append(
-        ...(store.meta?.tags ?? []).map((t, i) =>
+        ...store.tagsFor(form.category).map((t, i) =>
           h(
             'button.chip',
             { class: form.tags.has(t.name) ? 'on' : '', title: t.description ?? '', onclick: () => toggleTag(t.name) },
@@ -413,9 +413,16 @@ export function mountImport(root) {
 
   function setCategory(key) {
     if (!form) return;
+    const before = store.groupOf(form.category);
     form.category = key;
     form.dirty = true;
     form.renderCats();
+    // 지메 ↔ 비지메는 태그가 따로라서, 새 쪽에도 있는 태그만 남기고 목록을 바꿈
+    if (store.groupOf(key) !== before) {
+      const names = new Set(store.tagsFor(key).map((x) => x.name));
+      form.tags = new Set([...form.tags].filter((n) => names.has(n)));
+      form.renderTags();
+    }
   }
 
   function toggleTag(name) {
@@ -430,7 +437,7 @@ export function mountImport(root) {
     const name = window.prompt('새 태그 이름 (영문 소문자 · 숫자 · - 권장)');
     if (!name?.trim()) return;
     try {
-      const { tag } = await api.post('/api/admin/tags', { name });
+      const { tag } = await api.post('/api/admin/tags', { name, group: store.groupOf(form?.category) });
       await store.refreshMeta();
       toast(`#${tag.name} 태그를 만들었어요.`);
       if (form) {
@@ -445,7 +452,8 @@ export function mountImport(root) {
 
   function copyPrevTags() {
     if (!form || !state.prevTags.length) return;
-    form.tags = new Set(state.prevTags);
+    const names = new Set(store.tagsFor(form.category).map((x) => x.name));
+    form.tags = new Set(state.prevTags.filter((n) => names.has(n)));
     form.dirty = true;
     form.renderTags();
   }
@@ -581,7 +589,7 @@ export function mountImport(root) {
     }
     const k = e.key.toLowerCase();
     const tagIndex = TAG_KEYS.indexOf(k);
-    const tags = store.meta?.tags ?? [];
+    const tags = store.tagsFor(form?.category);
     let handled = true;
     if (tagIndex >= 0 && tags[tagIndex]) toggleTag(tags[tagIndex].name);
     else if (CATEGORY_KEYS[k]) setCategory(CATEGORY_KEYS[k]);

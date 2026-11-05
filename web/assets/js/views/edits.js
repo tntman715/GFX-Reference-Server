@@ -30,7 +30,6 @@ export function openEditForm(ref, { onDone } = {}) {
   if (!requireLogin(t('edit.loginToEdit'))) return;
   const direct = canEditRef(ref);
   const categories = store.meta?.categories ?? [];
-  const tagMeta = store.meta?.tags ?? [];
 
   let category = ref.category;
   const tags = new Set(ref.tags);
@@ -58,8 +57,15 @@ export function openEditForm(ref, { onDone } = {}) {
                 type: 'button',
                 class: c.key === category ? 'on' : '',
                 onclick: () => {
+                  const before = store.groupOf(category);
                   category = c.key;
                   renderCats();
+                  // 지메 ↔ 비지메는 태그가 따로라서, 새 쪽에도 있는 태그만 남김
+                  if (store.groupOf(category) !== before) {
+                    const names = new Set(store.tagsFor(category).map((x) => x.name));
+                    for (const n of [...tags]) if (!names.has(n)) tags.delete(n);
+                    renderTags();
+                  }
                 },
               },
               categoryLabel(c),
@@ -72,23 +78,27 @@ export function openEditForm(ref, { onDone } = {}) {
       renderCats();
 
       const tagRow = h('div.tag-list.edit-tags');
-      for (const tg of tagMeta) {
-        const chip = h(
-          'button.chip',
-          {
-            type: 'button',
-            class: tags.has(tg.name) ? 'on' : '',
-            title: tg.description ?? '',
-            onclick: () => {
-              if (tags.has(tg.name)) tags.delete(tg.name);
-              else tags.add(tg.name);
-              chip.classList.toggle('on', tags.has(tg.name));
+      function renderTags() {
+        clear(tagRow);
+        for (const tg of store.tagsFor(category)) {
+          const chip = h(
+            'button.chip',
+            {
+              type: 'button',
+              class: tags.has(tg.name) ? 'on' : '',
+              title: tg.description ?? '',
+              onclick: () => {
+                if (tags.has(tg.name)) tags.delete(tg.name);
+                else tags.add(tg.name);
+                chip.classList.toggle('on', tags.has(tg.name));
+              },
             },
-          },
-          `#${tg.name}`,
-        );
-        tagRow.append(chip);
+            `#${tg.name}`,
+          );
+          tagRow.append(chip);
+        }
       }
+      renderTags();
 
       const submit = h('button.btn.primary', { type: 'submit' }, direct ? t('edit.save') : t('edit.send'));
       const form = h(

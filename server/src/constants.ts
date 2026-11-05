@@ -12,6 +12,8 @@ export const CATEGORIES = {
     hasMapName: true,
     /** 맵 이름이 필수인지 */
     requiresMapName: true,
+    /** 어느 태그군을 쓰는지 (지메 / 비지메) */
+    tagGroup: 'gd',
   },
   gm_artwork: {
     label: '지메 기타 작업물',
@@ -19,6 +21,7 @@ export const CATEGORIES = {
     emoji: '🎨',
     hasMapName: false,
     requiresMapName: false,
+    tagGroup: 'gd',
   },
   non_gm: {
     label: '비지메',
@@ -26,6 +29,7 @@ export const CATEGORIES = {
     emoji: '✨',
     hasMapName: false,
     requiresMapName: false,
+    tagGroup: 'nongd',
   },
 } as const;
 
@@ -34,6 +38,27 @@ export const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];
 
 export function isCategory(value: unknown): value is Category {
   return typeof value === 'string' && value in CATEGORIES;
+}
+
+/** 태그군: 지메(썸네일 · 기타 작업물)와 비지메는 태그를 따로 씁니다 */
+export const TAG_GROUPS = {
+  gd: { label: '지메', labelEn: 'GD' },
+  nongd: { label: '비지메', labelEn: 'Non-GD' },
+} as const;
+export type TagGroup = keyof typeof TAG_GROUPS;
+export const TAG_GROUP_KEYS = Object.keys(TAG_GROUPS) as TagGroup[];
+
+export function isTagGroup(value: unknown): value is TagGroup {
+  return typeof value === 'string' && value in TAG_GROUPS;
+}
+
+/** 분류가 쓰는 태그군 (모르는 분류는 지메) */
+export function tagGroupOf(category: string | null | undefined): TagGroup {
+  return isCategory(category) ? CATEGORIES[category].tagGroup : 'gd';
+}
+
+export function categoriesOfGroup(group: TagGroup): Category[] {
+  return CATEGORY_KEYS.filter((k) => CATEGORIES[k].tagGroup === group);
 }
 
 /** 처음 설치할 때 만들어지는 기본 태그. 이후에는 관리자가 명령어로 추가/삭제합니다. */

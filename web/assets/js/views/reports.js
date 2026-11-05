@@ -16,7 +16,7 @@ const REASONS_EN = {
 
 const reasonLabel = (r) => (getLang() === 'en' ? (REASONS_EN[r.key] ?? r.label) : r.label);
 
-/** 신고 창: type 'ref' | 'resource' */
+/** 신고 창: type 'ref' | 'resource' | 'showcase' */
 export function openReportForm(type, id, label) {
   if (!requireLogin(t('report.login'))) return;
   const reasons = store.meta?.reportReasons ?? [];
@@ -126,7 +126,8 @@ export function mountReports(root, _params, { navigate }) {
   async function removeTarget(r) {
     if (!window.confirm(`"${r.target?.title}" 을(를) 지울까요? 되돌릴 수 없어요.`)) return;
     try {
-      await api.post(r.targetType === 'ref' ? `/api/refs/${r.targetId}/delete` : `/api/resources/${r.targetId}/delete`);
+      const path = { ref: 'refs', resource: 'resources', showcase: 'showcase' }[r.targetType] ?? 'refs';
+      await api.post(`/api/${path}/${r.targetId}/delete`);
       await api.post(`/api/admin/reports/${r.id}`, { status: 'resolved' });
       toast('지우고 신고를 처리 완료로 닫았어요.', 'ok');
       refreshMe();
@@ -139,7 +140,7 @@ export function mountReports(root, _params, { navigate }) {
 
   function card(r) {
     const target = r.target;
-    const href = r.targetType === 'ref' ? `#/ref/${r.targetId}` : `#/res/${r.targetId}`;
+    const href = { ref: `#/ref/${r.targetId}`, resource: `#/res/${r.targetId}`, showcase: `#/showcase/${r.targetId}` }[r.targetType] ?? '#/';
     return h(
       'div.proposal',
       target?.imageUrl

@@ -1,5 +1,5 @@
 import type { Config } from '../config.js';
-import { normalizeTagName, TAG_NAME_RE } from '../constants.js';
+import { categoriesOfGroup, normalizeTagName, TAG_GROUPS, TAG_NAME_RE, type TagGroup } from '../constants.js';
 import type { Db } from '../db/index.js';
 import { authRepo } from '../repos/auth.js';
 import { kvRepo } from '../repos/kv.js';
@@ -28,12 +28,13 @@ export class CommunityService {
 
   // ── 태그 ────────────────────────────────────────────────
 
-  listTags(): Promise<Tag[]> {
-    return tagsRepo.list(this.db);
+  /** group 을 비우면 지메 · 비지메 태그 모두 */
+  listTags(group?: TagGroup): Promise<Tag[]> {
+    return tagsRepo.list(this.db, group);
   }
 
-  tagNames(): Promise<string[]> {
-    return tagsRepo.names(this.db);
+  tagNames(group: TagGroup = 'gd'): Promise<string[]> {
+    return tagsRepo.names(this.db, group);
   }
 
   private validTagName(raw: string): string {
@@ -44,30 +45,30 @@ export class CommunityService {
     return name;
   }
 
-  async addTag(raw: string, description: string | null, actor: Actor): Promise<Tag> {
+  async addTag(raw: string, description: string | null, actor: Actor, group: TagGroup = 'gd'): Promise<Tag> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그를 추가할 수 있습니다.');
     const name = this.validTagName(raw);
-    const tag = await tagsRepo.add(this.db, name, description?.trim() || null, actor.id);
-    if (!tag) throw new UserError(`\`${name}\` 태그는 이미 있습니다.`);
+    const tag = await tagsRepo.add(this.db, group, name, description?.trim() || null, actor.id);
+    if (!tag) throw new UserError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 이미 있습니다.`);
     return tag;
   }
 
   /** 태그 지우기. 그 태그가 달려 있던 레퍼런스 번호를 돌려줌 (아카이브 메시지 갱신용) */
-  async removeTag(raw: string, actor: Actor): Promise<{ refIds: number[] }> {
+  async removeTag(raw: string, actor: Actor, group: TagGroup = 'gd'): Promise<{ refIds: number[] }> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그를 삭제할 수 있습니다.');
     const name = normalizeTagName(raw);
-    const refIds = await this.refIdsWithTag(name);
+    const refIds = await this.refIdsWithTag(group, name);
     const ok = await this.db.tx(async (q) => {
-      if (!(await tagsRepo.remove(q, name))) return false;
-      // 아직 옮기지 않은 가져오기 후보에서도 빼기
+      if (!(await tagsRepo.remove(q, group, name))) return false;
+      // 아직 옮기지 않은 가져오기 후보(같은 태그군 분류)에서도 빼기
       await q.query(
         `UPDATE import_items SET tags = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements_text(tags) x WHERE x <> $1), '[]'::jsonb)
-         WHERE tags ? $1`,
-        [name],
+         WHERE tags ? $1 AND category = ANY($2::text[])`,
+        [name, categoriesOfGroup(group)],
       );
       return true;
     });
-    if (!ok) throw new NotFoundError(`\`${name}\` 태그가 없습니다.`);
+    if (!ok) throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 없습니다.`);
     return { refIds };
   }
 
@@ -76,38 +77,40 @@ export class CommunityService {
    * 아직 옮기지 않은 가져오기 후보(태그를 이름으로 저장)도 함께 바꿈.
    * 그 태그가 달린 레퍼런스 번호를 돌려줌 (아카이브 메시지 갱신용)
    */
-  async renameTag(fromRaw: string, toRaw: string, actor: Actor): Promise<{ from: string; to: string; refIds: number[] }> {
+  async renameTag(fromRaw: string, toRaw: string, actor: Actor, group: TagGroup = 'gd'): Promise<{ from: string; to: string; refIds: number[] }> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그 이름을 바꿀 수 있습니다.');
     const from = normalizeTagName(fromRaw);
     const to = this.validTagName(toRaw);
     if (from === to) throw new UserError('새 이름이 지금 이름과 같아요.');
-    const existing = await tagsRepo.findByNames(this.db, [to]);
-    if (existing.length) throw new UserError(`\`${to}\` 태그가 이미 있습니다.`);
+    const existing = await tagsRepo.findByNames(this.db, group, [to]);
+    if (existing.length) throw new UserError(`${TAG_GROUPS[group].label} 태그에 \`${to}\` 가 이미 있습니다.`);
     const ok = await this.db.tx(async (q) => {
-      if (!(await tagsRepo.rename(q, from, to))) return false;
+      if (!(await tagsRepo.rename(q, group, from, to))) return false;
       await q.query(
         `UPDATE import_items SET tags = (SELECT jsonb_agg(CASE WHEN x = $1 THEN $2 ELSE x END) FROM jsonb_array_elements_text(tags) x)
-         WHERE tags ? $1`,
-        [from, to],
+         WHERE tags ? $1 AND category = ANY($3::text[])`,
+        [from, to, categoriesOfGroup(group)],
       );
       return true;
     });
-    if (!ok) throw new NotFoundError(`\`${from}\` 태그가 없습니다.`);
-    return { from, to, refIds: await this.refIdsWithTag(to) };
+    if (!ok) throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${from}\` 가 없습니다.`);
+    return { from, to, refIds: await this.refIdsWithTag(group, to) };
   }
 
-  private async refIdsWithTag(name: string): Promise<number[]> {
+  private async refIdsWithTag(group: TagGroup, name: string): Promise<number[]> {
     const rows = await this.db.query<{ ref_id: number }>(
-      'SELECT rt.ref_id FROM ref_tags rt JOIN tags t ON t.id = rt.tag_id WHERE t.name = $1 ORDER BY rt.ref_id',
-      [name],
+      'SELECT rt.ref_id FROM ref_tags rt JOIN tags t ON t.id = rt.tag_id WHERE t.grp = $1 AND t.name = $2 ORDER BY rt.ref_id',
+      [group, name],
     );
     return rows.map((r) => Number(r.ref_id));
   }
 
-  async describeTag(raw: string, description: string | null, actor: Actor): Promise<void> {
+  async describeTag(raw: string, description: string | null, actor: Actor, group: TagGroup = 'gd'): Promise<void> {
     if (!actor.isAdmin) throw new ForbiddenError('관리자만 태그 설명을 바꿀 수 있습니다.');
     const name = normalizeTagName(raw);
-    if (!(await tagsRepo.setDescription(this.db, name, description?.trim() || null))) throw new NotFoundError(`\`${name}\` 태그가 없습니다.`);
+    if (!(await tagsRepo.setDescription(this.db, group, name, description?.trim() || null))) {
+      throw new NotFoundError(`${TAG_GROUPS[group].label} 태그에 \`${name}\` 가 없습니다.`);
+    }
   }
 
   // ── 점수 ────────────────────────────────────────────────

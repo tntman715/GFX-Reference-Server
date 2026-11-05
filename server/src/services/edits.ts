@@ -1,4 +1,4 @@
-import { CATEGORIES, type Category, isCategory, normalizeTagName } from '../constants.js';
+import { CATEGORIES, type Category, isCategory, normalizeTagName, tagGroupOf } from '../constants.js';
 import type { Db } from '../db/index.js';
 import { usersRepo } from '../repos/users.js';
 import type { Actor, Creator, Reference, UserInfo } from '../types.js';
@@ -153,7 +153,7 @@ export class EditService {
     }
 
     if (input.tags !== undefined) {
-      const tags = (await this.refs.resolveTags(input.tags)).map((t) => t.name);
+      const tags = (await this.refs.resolveTags(input.tags, tagGroupOf(category))).map((t) => t.name);
       const add = tags.filter((t) => !ref.tags.includes(t));
       const remove = ref.tags.filter((t) => !tags.includes(t));
       if (add.length) changes.addTags = add;

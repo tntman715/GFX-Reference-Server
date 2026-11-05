@@ -324,7 +324,7 @@ describe('관리 / 연동 / 자동완성', () => {
     expect(t.last('reply').content).toContain('관리자만');
     t = interaction('command', { commandName: 'admin', sub: 'tag-add', values: { name: 'Neon', description: '네온' }, admin: true });
     await t.run();
-    expect(t.last('reply').content).toBe('🏷️ `neon` 태그를 추가했어요.');
+    expect(t.last('reply').content).toBe('🏷️ 지메 태그 `neon` 를 추가했어요.');
     t = interaction('command', { commandName: 'admin', sub: 'score', values: { user: BOB, amount: 50, reason: '이벤트' }, admin: true });
     await t.run();
     expect(t.last('reply').content).toContain('현재 **50점** (1위)');
@@ -361,6 +361,6 @@ describe('관리 / 연동 / 자동완성', () => {
     expect(t.last('reply').embeds[0].description).toContain('/연동 코드:XXXX-XXXX');
     t = interaction('command', { commandName: 'tags', values: {} });
     await t.run();
-    expect(t.last('reply').embeds[0].title).toBe('🏷️ 태그 목록 (11개)');
+    expect(t.last('reply').embeds[0].title).toBe('🏷️ 태그 목록 (22개)');
   });
 });

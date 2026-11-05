@@ -15,6 +15,34 @@ const kindName = (kind) => (getLang() === 'en' ? kindInfo(kind).labelEn : kindIn
 const PLAY_ICON =
   '<svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.6)"/><path d="M10 8.5v7l5.5-3.5z" fill="#fff"/></svg>';
 
+/**
+ * 투명 배경 이미지(PNG 하프톤 등)는 어두운 배경에서 안 보이므로,
+ * 다 읽은 뒤 투명한 곳이 있으면 체크무늬 배경을 깔아 줌.
+ */
+function alphaImg(props) {
+  const img = h('img', props);
+  const check = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = c.height = 24;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, 24, 24);
+      const d = ctx.getImageData(0, 0, 24, 24).data;
+      for (let i = 3; i < d.length; i += 4) {
+        if (d[i] < 250) {
+          img.classList.add('has-alpha');
+          return;
+        }
+      }
+    } catch {
+      /* 다른 사이트 이미지(유튜브 썸네일 등)는 검사하지 않음 */
+    }
+  };
+  if (img.complete && img.naturalWidth) check();
+  else img.addEventListener('load', check, { once: true });
+  return img;
+}
+
 function fileExt(r) {
   const name = r.file?.name ?? '';
   const m = /\.([a-z0-9]{1,6})$/i.exec(name);
@@ -24,7 +52,7 @@ function fileExt(r) {
 /** 목록 카드 */
 function resourceCard(r) {
   const thumb = r.preview
-    ? h('img', { src: r.preview.url, alt: '', loading: 'lazy', decoding: 'async' })
+    ? alphaImg({ src: r.preview.url, alt: '', loading: 'lazy', decoding: 'async' })
     : h('span.res-ext', fileExt(r));
   const hasVideo = r.media.some((m) => m.type === 'youtube');
   return h(
@@ -167,7 +195,7 @@ export function mountResource(root, _params, { id, navigate }) {
     const show = (m) => {
       clear(viewer).append(
         m.type === 'image'
-          ? h('img', { src: m.url, alt: r.title, width: m.width, height: m.height })
+          ? alphaImg({ src: m.url, alt: r.title, width: m.width, height: m.height })
           : h('iframe', {
               src: `https://www.youtube-nocookie.com/embed/${m.id}`,
               title: 'YouTube',
@@ -183,7 +211,7 @@ export function mountResource(root, _params, { id, navigate }) {
         h(
           'button.res-strip-item',
           { type: 'button', dataset: { key: m.url ?? m.id }, onclick: () => show(m) },
-          h('img', { src: m.type === 'image' ? m.url : m.thumbUrl, alt: '' }),
+          m.type === 'image' ? alphaImg({ src: m.url, alt: '' }) : h('img', { src: m.thumbUrl, alt: '' }),
           m.type === 'youtube' ? h('span.res-play.sm', { html: PLAY_ICON }) : null,
         ),
       );
@@ -310,7 +338,7 @@ export function openResourceUpload(kind, { navigate } = {}) {
           imgList.append(
             h(
               'span.res-upload-img',
-              h('img', { src: URL.createObjectURL(f), alt: '' }),
+              alphaImg({ src: URL.createObjectURL(f), alt: '' }),
               h(
                 'button',
                 {

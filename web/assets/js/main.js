@@ -15,6 +15,7 @@ import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
 import { mountReports } from './views/reports.js';
 import { mountResource, mountResources } from './views/resources.js';
+import { mountShowcase, mountShowcaseItem } from './views/showcase.js';
 import { mountTags } from './views/tags.js';
 import { openUploadForm } from './views/upload.js';
 
@@ -41,7 +42,8 @@ function navigate(hash) {
 
 function matchView(path) {
   let m;
-  if (path === '/' || path === '') return { key: 'explore', mount: mountExplore };
+  if (path === '/' || path === '') return { key: 'explore', mount: mountExplore, extra: { scope: 'gd' } };
+  if (path === '/nongd') return { key: 'nongd', mount: mountExplore, extra: { scope: 'nongd' } };
   if (path === '/feed') return { key: 'feed', mount: mountFeed };
   if (path === '/popular') return { key: 'popular', mount: mountPopular };
   if (path === '/colors') return { key: 'colors', mount: mountColors };
@@ -54,6 +56,8 @@ function matchView(path) {
   if (path === '/assets') return { key: 'assets', mount: mountResources, extra: { kind: 'asset' } };
   if (path === '/plugins') return { key: 'plugins', mount: mountResources, extra: { kind: 'plugin' } };
   if (path === '/texturepacks') return { key: 'texturepacks', mount: mountResources, extra: { kind: 'texturepack' } };
+  if (path === '/showcase') return { key: 'showcase', mount: mountShowcase };
+  if ((m = /^\/showcase\/(\d+)$/.exec(path))) return { key: `showcase:${m[1]}`, nav: 'showcase', mount: mountShowcaseItem, extra: { id: m[1] } };
   if ((m = /^\/res\/(\d+)$/.exec(path))) return { key: `res:${m[1]}`, nav: 'res', mount: mountResource, extra: { id: m[1] } };
   if ((m = /^\/board\/(\d+)$/.exec(path))) return { key: `board:${m[1]}`, nav: 'boards', mount: mountBoard, extra: { id: m[1] } };
   if ((m = /^\/user\/(\d+)$/.exec(path))) return { key: `user:${m[1]}`, nav: 'leaderboard', mount: mountProfile, extra: { id: m[1] } };
@@ -156,6 +160,14 @@ function renderAccount() {
           me.openReports ? h('span.badge', String(me.openReports)) : null,
         )
       : null,
+    me.isAdmin && me.pendingShowcase
+      ? h(
+          'a',
+          { href: '#/showcase?tab=requests', onclick: () => menu.classList.remove('open') },
+          t('account.showcaseRequests'),
+          h('span.badge', String(me.pendingShowcase)),
+        )
+      : null,
     h(
       'button',
       {
@@ -178,8 +190,8 @@ function renderAccount() {
       },
     },
     h('img.avatar', { src: avatarSrc(me.avatarUrl), alt: me.username }),
-    me.pendingEdits || me.openReports
-      ? h('span.badge.dot', { title: t('account.edits') }, String((me.pendingEdits ?? 0) + (me.openReports ?? 0)))
+    me.pendingEdits || me.openReports || me.pendingShowcase
+      ? h('span.badge.dot', { title: t('account.edits') }, String((me.pendingEdits ?? 0) + (me.openReports ?? 0) + (me.pendingShowcase ?? 0)))
       : null,
   );
   root.append(h('div.account', btn, menu));

@@ -5,6 +5,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import {
+  categoriesOfGroup,
   CATEGORIES,
   CATEGORY_KEYS,
   COLOR_FAMILIES,
@@ -16,6 +17,10 @@ import {
   POPULAR_PERIODS,
   SORTS,
   type SortKey,
+  isTagGroup,
+  TAG_GROUP_KEYS,
+  TAG_GROUPS,
+  type TagGroup,
 } from '../constants.js';
 import type { AppContext } from '../context.js';
 import type { SearchOptions } from '../repos/references.js';
@@ -56,6 +61,11 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
 };
+
+/** 관리자 태그 API 의 태그군 (없으면 지메) */
+function tagGroupParam(v: unknown): TagGroup {
+  return isTagGroup(v) ? v : 'gd';
+}
 
 function intParam(v: string | undefined, def: number, min: number, max: number): number {
   const n = Number.parseInt(v ?? '', 10);
@@ -155,7 +165,8 @@ export function createApi(ctx: AppContext): Hono<Env> {
       guild: ctx.bot?.inviteInfo?.() ?? null,
       categories: CATEGORY_KEYS.map((key) => ({ key, ...CATEGORIES[key] })),
       colors: COLOR_FAMILY_KEYS.map((key) => ({ key, ...COLOR_FAMILIES[key] })),
-      tags: tags.map((t) => ({ name: t.name, description: t.description, count: t.count })),
+      tags: tags.map((t) => ({ name: t.name, description: t.description, count: t.count, group: t.group })),
+      tagGroups: TAG_GROUP_KEYS.map((key) => ({ key, ...TAG_GROUPS[key] })),
       reactions: config.reactionEmojis,
       sorts: SORTS,
       periods: Object.entries(POPULAR_PERIODS).map(([key, v]) => ({ key, label: v.label })),
@@ -164,6 +175,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
       tiers: TIERS,
       resourceKinds: RESOURCE_KIND_KEYS.map((key) => ({ key, ...RESOURCE_KINDS[key], points: config.scoring.pointsPerResource[key] })),
       reportReasons: Object.entries(REPORT_REASONS).map(([key, label]) => ({ key, label })),
+      showcase: { points: config.scoring.pointsPerShowcase, playlist: ctx.showcase.playlistEnabled },
       stats,
       bot: { online: botOnline },
       archive: { available: refs.archiveAvailable, kind: config.archiveDriver },
@@ -177,6 +189,8 @@ export function createApi(ctx: AppContext): Hono<Env> {
     const opts: SearchOptions = {};
     if (q.q) opts.q = q.q.slice(0, 200);
     if (isCategory(q.category)) opts.category = q.category;
+    // scope=gd 면 지메 분류만, scope=nongd 면 비지메만 (분류를 따로 고르지 않았을 때)
+    else if (isTagGroup(q.scope)) opts.categories = categoriesOfGroup(q.scope);
     const tags = parseTagList(q.tags);
     if (tags.length) opts.tags = tags;
     if (isColorFamily(q.color)) opts.color = q.color;
@@ -296,7 +310,10 @@ export function createApi(ctx: AppContext): Hono<Env> {
   });
 
   // ── 태그 / 색상 / 제작자 ────────────────────────────────
-  app.get('/api/tags', async (c) => c.json({ tags: await community.listTags() }));
+  app.get('/api/tags', async (c) => {
+    const group = c.req.query('group');
+    return c.json({ tags: await community.listTags(isTagGroup(group) ? group : undefined) });
+  });
 
   app.get('/api/creators', async (c) => c.json({ creators: await refs.creators(c.req.query('q') ?? '', 20) }));
 
@@ -705,12 +722,68 @@ export function createApi(ctx: AppContext): Hono<Env> {
   });
 
   // ── 신고 ────────────────────────────────────────────────
+  // ── 쇼케이스 (유튜브 영상) ──────────────────────────────
+  const showcaseLimiter = new RateLimiter(30, 60_000);
+  const showcaseId = (c: Context<Env>) => {
+    const id = Number.parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isInteger(id) || id <= 0) throw new NotFoundError();
+    return id;
+  };
+
+  app.get('/api/showcase', async (c) => {
+    const q = c.req.query();
+    const pageSize = intParam(q.limit, 24, 1, 60);
+    const page = intParam(q.page, 1, 1, 10_000);
+    const offset = (page - 1) * pageSize;
+    const { items, total } = await ctx.showcase.list({ q: q.q?.slice(0, 200), addedBy: q.addedBy, limit: pageSize, offset });
+    return c.json({ items: items.map((s) => ctx.showcase.toPublic(s)), total, page, pageSize, hasMore: offset + items.length < total });
+  });
+
+  app.get('/api/showcase/:id', async (c) => {
+    return c.json({ item: ctx.showcase.toPublic(await ctx.showcase.require(showcaseId(c))) });
+  });
+
+  // 영상 주소면 바로 올라가고, 재생목록 주소면 관리자 승인 요청
+  app.post('/api/showcase', async (c) => {
+    const user = await requireMember(c);
+    if (!showcaseLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ url?: string }>().catch(() => ({}) as { url?: string });
+    const res = await ctx.showcase.submit(body.url, user);
+    return c.json(res.kind === 'video' ? { kind: 'video', item: ctx.showcase.toPublic(res.item) } : res);
+  });
+
+  app.post('/api/showcase/:id/delete', async (c) => {
+    const user = requireUser(c);
+    await ctx.showcase.remove(showcaseId(c), { id: user.id, isAdmin: await viewerIsAdmin(user.id) });
+    return c.json({ ok: true });
+  });
+
+  // 내가 보낸 재생목록 요청 (처리 상태 확인)
+  app.get('/api/showcase-requests/mine', async (c) => {
+    const user = requireUser(c);
+    return c.json({ items: await ctx.showcase.requests({ status: 'all', requestedBy: user.id }) });
+  });
+
+  app.get('/api/admin/showcase-requests', async (c) => {
+    await requireAdmin(c);
+    const all = c.req.query('status') === 'all';
+    return c.json({ items: await ctx.showcase.requests({ status: all ? 'all' : 'pending' }) });
+  });
+
+  app.post('/api/admin/showcase-requests/:id', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ action?: string }>().catch(() => ({}) as { action?: string });
+    if (body.action !== 'approve' && body.action !== 'reject') throw new UserError('승인 또는 거절을 골라 주세요.');
+    const req = await ctx.showcase.decide(showcaseId(c), body.action === 'approve', { id: user.id, isAdmin: true });
+    return c.json({ request: req });
+  });
+
   const reportLimiter = new RateLimiter(10, 60_000);
   app.post('/api/reports', async (c) => {
     const user = requireUser(c);
     if (!reportLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
     const body = await c.req.json<{ targetType?: string; targetId?: number; reason?: string; note?: string }>().catch(() => ({}) as Record<string, never>);
-    const type = body.targetType === 'resource' ? 'resource' : 'ref';
+    const type = body.targetType === 'resource' || body.targetType === 'showcase' ? body.targetType : 'ref';
     const id = Number(body.targetId);
     if (!Number.isInteger(id) || id <= 0) throw new UserError('신고할 대상이 없어요.');
     const report = await ctx.reports.create(type, id, user, body.reason, body.note);
@@ -860,16 +933,28 @@ export function createApi(ctx: AppContext): Hono<Env> {
   // 태그 붙이는 중에 바로 새 태그 만들기 (디스코드 /관리 태그추가 와 같음)
   app.post('/api/admin/tags', async (c) => {
     const user = await requireAdmin(c);
-    const body = await c.req.json<{ name?: string; description?: string }>().catch(() => ({}) as { name?: string; description?: string });
-    const tag = await community.addTag(String(body.name ?? ''), body.description ?? null, { id: user.id, isAdmin: true });
+    const body = await c.req
+      .json<{ name?: string; description?: string; group?: string }>()
+      .catch(() => ({}) as { name?: string; description?: string; group?: string });
+    const tag = await community.addTag(String(body.name ?? ''), body.description ?? null, { id: user.id, isAdmin: true }, tagGroupParam(body.group));
     return c.json({ tag });
+  });
+
+  // 태그 지우기: 달려 있던 레퍼런스에서도 빠짐
+  app.post('/api/admin/tags/delete', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ name?: string; group?: string }>().catch(() => ({}) as { name?: string; group?: string });
+    const res = await community.removeTag(String(body.name ?? ''), { id: user.id, isAdmin: true }, tagGroupParam(body.group));
+    refs.refreshArchives(res.refIds);
+    log.info(`태그 삭제: ${body.name} (${tagGroupParam(body.group)}, 레퍼런스 ${res.refIds.length}개) by ${user.username}`);
+    return c.json({ refs: res.refIds.length });
   });
 
   // 태그 이름 바꾸기: 그 태그가 달린 모든 레퍼런스와 가져오기 후보에 한꺼번에 적용
   app.post('/api/admin/tags/rename', async (c) => {
     const user = await requireAdmin(c);
-    const body = await c.req.json<{ from?: string; to?: string }>().catch(() => ({}) as { from?: string; to?: string });
-    const res = await community.renameTag(String(body.from ?? ''), String(body.to ?? ''), { id: user.id, isAdmin: true });
+    const body = await c.req.json<{ from?: string; to?: string; group?: string }>().catch(() => ({}) as { from?: string; to?: string; group?: string });
+    const res = await community.renameTag(String(body.from ?? ''), String(body.to ?? ''), { id: user.id, isAdmin: true }, tagGroupParam(body.group));
     refs.refreshArchives(res.refIds);
     log.info(`태그 이름 변경: ${res.from} → ${res.to} (레퍼런스 ${res.refIds.length}개) by ${user.username}`);
     return c.json({ from: res.from, to: res.to, refs: res.refIds.length });
@@ -909,6 +994,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
             isMember: ctx.bot?.isOnline() ? await isMemberUser(user.id) : false,
             pendingEdits: await ctx.edits.pendingCount(user.id),
             openReports: ctx.bot?.isOnline() && (await isAdminUser(user.id)) ? await ctx.reports.openCount() : 0,
+            pendingShowcase: ctx.bot?.isOnline() && (await isAdminUser(user.id)) ? await ctx.showcase.pendingCount() : 0,
           }
         : null,
     });

@@ -4,7 +4,8 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { LocalArchive } from '../src/archive/local.js';
 import { LocalResourceStore } from '../src/archive/local-resources.js';
-import { createReports } from '../src/app.js';
+import { createReports, createShowcase } from '../src/app.js';
+import type { PlaylistApi, PlaylistItem, ShowcaseService } from '../src/services/showcase.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext, BotBridge } from '../src/context.js';
 import { type Db, openDb } from '../src/db/index.js';
@@ -23,6 +24,19 @@ import type { UserInfo } from '../src/types.js';
 
 let sharedDb: Db | null = null;
 
+/** 테스트용 유튜브 재생목록 (ID → 영상들). YOUTUBE_API_KEY 를 넣은 컨텍스트에서만 쓰임 */
+export const testPlaylists = new Map<string, { title: string; items: PlaylistItem[] }>();
+const fakePlaylistApi: PlaylistApi = {
+  async info(id) {
+    const p = testPlaylists.get(id);
+    return p ? { title: p.title, channelName: '테스트 채널', itemCount: p.items.length } : null;
+  },
+  async *pages(id) {
+    const items = testPlaylists.get(id)?.items ?? [];
+    for (let i = 0; i < items.length; i += 50) yield items.slice(i, i + 50);
+  },
+};
+
 /** 테스트 사이에 DB 를 비우고 기본 태그만 남김 (PGlite 를 매번 새로 띄우면 느려서 재사용) */
 async function freshDb(): Promise<Db> {
   if (!sharedDb) {
@@ -30,8 +44,8 @@ async function freshDb(): Promise<Db> {
     await migrate(sharedDb);
   }
   await sharedDb.exec(`
-    TRUNCATE ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
-    ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (name, description, created_by) VALUES ('${t.name}', '${t.description}', 'system');`).join('\n')}
+    TRUNCATE showcases, showcase_requests, ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
+    ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (grp, name, description, created_by) VALUES ('gd', '${t.name}', '${t.description}', 'system'), ('nongd', '${t.name}', '${t.description}', 'system');`).join('\n')}
   `);
   return sharedDb;
 }
@@ -56,9 +70,15 @@ export async function makeContext(env: Record<string, string> = {}, bot: BotBrid
   const ctx = { config, db, storage, refs, community, bot, tmp, importer: null! as ImportService, edits: null! as EditService, boards: new BoardService(db),
     resources: new ResourceService(db, storage, new LocalResourceStore(path.join(tmp, 'resources')), config),
     reports: null! as ReportService,
+    showcase: null! as ShowcaseService,
     // 테스트에서는 유튜브에 묻지 않음 ('notfound000' 은 없는 영상)
     videos: new VideoService(db, refs, async (id) => (id === 'notfound000' ? { ok: false } : { ok: true, title: `영상 ${id}` })),
   };
+  // 테스트에서는 유튜브에 묻지 않음 ('notfound000' 은 없는 영상)
+  ctx.showcase = createShowcase(ctx, {
+    lookup: async (id) => (id === 'notfound000' ? { ok: false } : { ok: true, title: `영상 ${id}`, author: `채널 ${id.slice(0, 3)}`, authorUrl: null }),
+    playlistApi: () => (config.youtube.apiKey ? fakePlaylistApi : null),
+  });
   ctx.reports = createReports(ctx);
   ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
   ctx.edits = new EditService(

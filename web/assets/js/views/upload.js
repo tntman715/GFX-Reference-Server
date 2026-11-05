@@ -89,8 +89,14 @@ export function openUploadForm({ navigate } = {}) {
                 type: 'button',
                 class: c.key === category ? 'on' : '',
                 onclick: () => {
+                  const before = store.groupOf(category);
                   category = c.key;
                   renderCats();
+                  // 지메 ↔ 비지메는 태그가 따로라서 태그 목록을 바꿔 보여 줌
+                  if (store.groupOf(category) !== before) {
+                    tags.clear();
+                    renderTags();
+                  }
                 },
               },
               categoryLabel(c),
@@ -103,22 +109,27 @@ export function openUploadForm({ navigate } = {}) {
       renderCats();
 
       const tagRow = h('div.tag-list.edit-tags');
-      for (const tg of store.meta?.tags ?? []) {
-        const chip = h(
-          'button.chip',
-          {
-            type: 'button',
-            title: tg.description ?? '',
-            onclick: () => {
-              if (tags.has(tg.name)) tags.delete(tg.name);
-              else tags.add(tg.name);
-              chip.classList.toggle('on', tags.has(tg.name));
+      function renderTags() {
+        clear(tagRow);
+        for (const tg of store.tagsFor(category)) {
+          const chip = h(
+            'button.chip',
+            {
+              type: 'button',
+              class: tags.has(tg.name) ? 'on' : '',
+              title: tg.description ?? '',
+              onclick: () => {
+                if (tags.has(tg.name)) tags.delete(tg.name);
+                else tags.add(tg.name);
+                chip.classList.toggle('on', tags.has(tg.name));
+              },
             },
-          },
-          `#${tg.name}`,
-        );
-        tagRow.append(chip);
+            `#${tg.name}`,
+          );
+          tagRow.append(chip);
+        }
       }
+      renderTags();
 
       const dupBox = h('div.upload-dup');
       const submit = h('button.btn.primary', { type: 'submit' }, t('upload.submit'));

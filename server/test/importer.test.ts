@@ -332,7 +332,7 @@ describe('태그 이름 바꾸기 (관리자)', () => {
       const token = await ctx.community.createSession(user, 'plugin');
       return app.request(path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     };
-    const ref = await ctx.refs.create({ file: file(images.a3), category: 'non_gm', title: 'x', tags: ['glow', '3d'], uploader: bob });
+    const ref = await ctx.refs.create({ file: file(images.a3), category: 'gm_artwork', title: 'x', tags: ['glow', '3d'], uploader: bob });
     await ctx.importer.runScan(source, '900');
     const [first] = await ctx.importer.list('pending');
     await ctx.importer.update(first.id, { tags: ['glow'] });

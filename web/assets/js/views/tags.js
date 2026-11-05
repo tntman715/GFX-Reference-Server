@@ -9,7 +9,8 @@ import { store } from '../store.js';
  * 이름을 바꾸면 그 태그가 달린 모든 항목에 한꺼번에 적용돼요. (관리자 전용이라 한국어로만)
  */
 const KINDS = [
-  ['ref', '레퍼런스'],
+  ['gd', '지메'],
+  ['nongd', '비지메'],
   ['asset', '에셋'],
   ['plugin', '플러그인'],
   ['texturepack', '텍스쳐팩'],
@@ -17,7 +18,8 @@ const KINDS = [
 
 export function mountTags(root, params) {
   document.title = 'Tags · GFX References';
-  let kind = KINDS.some(([k]) => k === params?.get?.('kind')) ? params.get('kind') : 'ref';
+  let kind = KINDS.some(([k]) => k === params?.get?.('kind')) ? params.get('kind') : 'gd';
+  const isRefKind = () => kind === 'gd' || kind === 'nongd';
   const search = h('input.form-input', { type: 'search', placeholder: '태그 찾기', 'aria-label': '태그 찾기' });
   const kindSeg = h('div.segmented');
   const newName = h('input.form-input', { type: 'text', maxlength: 40, placeholder: '새 태그 이름' });
@@ -29,7 +31,7 @@ export function mountTags(root, params) {
         e.preventDefault();
         if (!newName.value.trim()) return newName.focus();
         try {
-          if (kind === 'ref') await api.post('/api/admin/tags', { name: newName.value, description: newDesc.value });
+          if (isRefKind()) await api.post('/api/admin/tags', { group: kind, name: newName.value, description: newDesc.value });
           else await api.post('/api/admin/resource-tags', { kind, name: newName.value, description: newDesc.value });
           toast(`#${newName.value.trim()} 태그를 만들었어요.`, 'ok');
           newName.value = '';
@@ -48,7 +50,7 @@ export function mountTags(root, params) {
   root.append(
     h(
       'div.page-head',
-      h('div', h('h1', 'Tags'), h('p', '태그 이름을 바꾸면 그 태그가 달린 모든 항목과 가져오기 후보에 바로 적용돼요. 에셋 · 플러그인 · 텍스쳐팩은 탭마다 태그가 따로 있어요.')),
+      h('div', h('h1', 'Tags'), h('p', '태그 이름을 바꾸면 그 태그가 달린 모든 항목과 가져오기 후보에 바로 적용돼요. 지메 · 비지메 · 에셋 · 플러그인 · 텍스쳐팩은 태그가 따로 있어요.')),
       h('div.tag-admin-search', search),
     ),
     h('div.tag-admin-bar', kindSeg),
@@ -84,7 +86,7 @@ export function mountTags(root, params) {
             class: kind === k ? 'on' : '',
             onclick: () => {
               kind = k;
-              history.replaceState(null, '', `#/tags${k === 'ref' ? '' : `?kind=${k}`}`);
+              history.replaceState(null, '', `#/tags${k === 'gd' ? '' : `?kind=${k}`}`);
               renderKinds();
               load();
             },
@@ -96,8 +98,8 @@ export function mountTags(root, params) {
   };
 
   const listHref = (name) =>
-    kind === 'ref'
-      ? `#/?tags=${encodeURIComponent(name)}`
+    isRefKind()
+      ? `#/${kind === 'nongd' ? 'nongd' : ''}?tags=${encodeURIComponent(name)}`
       : `#/${kind === 'asset' ? 'assets' : kind === 'plugin' ? 'plugins' : 'texturepacks'}?tags=${encodeURIComponent(name)}`;
 
   const render = () => {
@@ -117,7 +119,7 @@ export function mountTags(root, params) {
             h(
               'div.row',
               h('button.btn.sm', { onclick: () => rename(x) }, '이름 바꾸기'),
-              kind === 'ref' ? null : h('button.btn.sm.danger', { onclick: () => remove(x) }, '지우기'),
+              h('button.btn.sm.danger', { onclick: () => remove(x) }, '지우기'),
             ),
           ),
         ),
@@ -128,9 +130,9 @@ export function mountTags(root, params) {
   async function load() {
     clear(body).append(spinner());
     try {
-      if (kind === 'ref') {
+      if (isRefKind()) {
         await store.refreshMeta();
-        tags = store.meta?.tags ?? [];
+        tags = store.tagsInGroup(kind);
       } else {
         tags = (await api.get('/api/resources/tags', { kind })).tags;
       }
@@ -148,8 +150,8 @@ export function mountTags(root, params) {
     if (to === null || !to.trim() || to.trim() === tag.name) return;
     try {
       const res =
-        kind === 'ref'
-          ? await api.post('/api/admin/tags/rename', { from: tag.name, to })
+        isRefKind()
+          ? await api.post('/api/admin/tags/rename', { group: kind, from: tag.name, to })
           : await api.post('/api/admin/resource-tags/rename', { kind, from: tag.name, to });
       toast(`#${res.from} → #${res.to} (${res.refs}개에 적용)`, 'ok');
       await load();
@@ -161,7 +163,8 @@ export function mountTags(root, params) {
   async function remove(tag) {
     if (!window.confirm(`#${tag.name} 태그를 지울까요? 달려 있던 ${tag.count}개 항목에서 빠져요.`)) return;
     try {
-      await api.post('/api/admin/resource-tags/delete', { kind, name: tag.name });
+      if (isRefKind()) await api.post('/api/admin/tags/delete', { group: kind, name: tag.name });
+      else await api.post('/api/admin/resource-tags/delete', { kind, name: tag.name });
       toast(`#${tag.name} 태그를 지웠어요.`, 'ok');
       await load();
     } catch (err) {

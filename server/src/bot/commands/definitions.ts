@@ -5,7 +5,7 @@ import {
   SlashCommandBuilder,
   type SlashCommandSubcommandBuilder,
 } from 'discord.js';
-import { CATEGORIES, CATEGORY_KEYS, COLOR_FAMILIES, COLOR_FAMILY_KEYS, POPULAR_PERIODS } from '../../constants.js';
+import { CATEGORIES, CATEGORY_KEYS, COLOR_FAMILIES, COLOR_FAMILY_KEYS, POPULAR_PERIODS, TAG_GROUP_KEYS, TAG_GROUPS } from '../../constants.js';
 
 /**
  * 슬래시 명령어 정의.
@@ -14,6 +14,7 @@ import { CATEGORIES, CATEGORY_KEYS, COLOR_FAMILIES, COLOR_FAMILY_KEYS, POPULAR_P
 
 const categoryChoices = CATEGORY_KEYS.map((k) => ({ name: `${CATEGORIES[k].emoji} ${CATEGORIES[k].label}`, value: k }));
 const colorChoices = COLOR_FAMILY_KEYS.map((k) => ({ name: COLOR_FAMILIES[k].label, value: k }));
+const groupChoices = TAG_GROUP_KEYS.map((k) => ({ name: `${TAG_GROUPS[k].label} 태그`, value: k }));
 const periodChoices = Object.entries(POPULAR_PERIODS).map(([k, v]) => ({ name: v.label, value: k }));
 
 function ko<T extends ApplicationCommandOptionBase | SlashCommandSubcommandBuilder>(o: T, name: string, koName: string, desc: string): T {
@@ -131,22 +132,25 @@ export function buildCommands() {
     .addSubcommand((s) =>
       ko(s, 'tag-add', '태그추가', '새 태그 만들기')
         .addStringOption((o) => ko(o, 'name', '이름', '태그 이름 (예: neon)').setRequired(true).setMaxLength(40))
-        .addStringOption((o) => ko(o, 'description', '설명', '태그 설명').setMaxLength(100)),
+        .addStringOption((o) => ko(o, 'description', '설명', '태그 설명').setMaxLength(100))
+        .addStringOption((o) => ko(o, 'group', '태그군', '지메 태그 / 비지메 태그 (기본: 지메)').addChoices(...groupChoices)),
     )
     .addSubcommand((s) =>
-      ko(s, 'tag-remove', '태그삭제', '태그 삭제 (달려 있던 레퍼런스에서도 빠짐)').addStringOption((o) =>
-        ko(o, 'name', '이름', '태그 이름').setRequired(true).setAutocomplete(true),
-      ),
+      ko(s, 'tag-remove', '태그삭제', '태그 삭제 (달려 있던 레퍼런스에서도 빠짐)')
+        .addStringOption((o) => ko(o, 'name', '이름', '태그 이름').setRequired(true).setAutocomplete(true))
+        .addStringOption((o) => ko(o, 'group', '태그군', '지메 태그 / 비지메 태그 (기본: 지메)').addChoices(...groupChoices)),
     )
     .addSubcommand((s) =>
       ko(s, 'tag-rename', '태그이름변경', '태그 이름 바꾸기')
         .addStringOption((o) => ko(o, 'from', '기존이름', '기존 태그').setRequired(true).setAutocomplete(true))
-        .addStringOption((o) => ko(o, 'to', '새이름', '새 이름').setRequired(true).setMaxLength(40)),
+        .addStringOption((o) => ko(o, 'to', '새이름', '새 이름').setRequired(true).setMaxLength(40))
+        .addStringOption((o) => ko(o, 'group', '태그군', '지메 태그 / 비지메 태그 (기본: 지메)').addChoices(...groupChoices)),
     )
     .addSubcommand((s) =>
       ko(s, 'tag-describe', '태그설명', '태그 설명 바꾸기')
         .addStringOption((o) => ko(o, 'name', '이름', '태그 이름').setRequired(true).setAutocomplete(true))
-        .addStringOption((o) => ko(o, 'description', '설명', '새 설명 (비우면 삭제)').setMaxLength(100)),
+        .addStringOption((o) => ko(o, 'description', '설명', '새 설명 (비우면 삭제)').setMaxLength(100))
+        .addStringOption((o) => ko(o, 'group', '태그군', '지메 태그 / 비지메 태그 (기본: 지메)').addChoices(...groupChoices)),
     )
     .addSubcommand((s) =>
       ko(s, 'score', '점수조정', '점수를 더하거나 뺍니다')

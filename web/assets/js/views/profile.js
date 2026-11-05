@@ -45,6 +45,7 @@ export function mountProfile(root, params, { id }) {
           stat('Edits', s?.acceptedEdits ?? 0),
           stat('Assets etc.', s?.resourceUploads ?? 0),
           stat('Speedart', s?.videos ?? 0),
+          stat('Showcase', s?.showcases ?? 0),
           stat('Bonus', s?.adjustments ?? 0),
           stat('Rank', s ? t('profile.rankShort', { r: s.rank }) : '-'),
         ),

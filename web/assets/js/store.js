@@ -36,6 +36,21 @@ export const store = {
     return this.meta?.categories.find((c) => c.key === key);
   },
 
+  /** 분류가 쓰는 태그군 (지메 gd / 비지메 nongd) */
+  groupOf(category) {
+    return this.category(category)?.tagGroup ?? 'gd';
+  },
+
+  /** 그 태그군의 태그들 */
+  tagsInGroup(group) {
+    return (this.meta?.tags ?? []).filter((t) => (t.group ?? 'gd') === group);
+  },
+
+  /** 그 분류에 달 수 있는 태그들 */
+  tagsFor(category) {
+    return this.tagsInGroup(this.groupOf(category));
+  },
+
   color(key) {
     return this.meta?.colors.find((c) => c.key === key);
   },

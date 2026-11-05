@@ -34,6 +34,8 @@ export function openDetail(id, { onClose, navigate }) {
     similarGrid?.destroy();
     const meta = store.meta;
     const cat = store.category(ref.category) ?? { key: ref.category, label: ref.categoryLabel };
+    // 비지메는 따로 된 탭에서 태그 · 제작자로 찾음
+    const listBase = store.groupOf(ref.category) === 'nongd' ? '#/nongd' : '#/';
     const archiveOk = meta?.archive?.available;
     document.title = `#${ref.id} ${ref.title} · GFX References`;
 
@@ -250,7 +252,7 @@ export function openDetail(id, { onClose, navigate }) {
       h(
         'span.creator-list',
         creators.map((c) =>
-          h('a.user-link', { href: `#/?creator=${encodeURIComponent(c.name)}`, title: t('detail.moreByCreator') }, c.name),
+          h('a.user-link', { href: `${listBase}?creator=${encodeURIComponent(c.name)}`, title: t('detail.moreByCreator') }, c.name),
         ),
       ),
     );
@@ -298,7 +300,7 @@ export function openDetail(id, { onClose, navigate }) {
             ref.tags.length
               ? h(
                   'div.tag-list',
-                  ref.tags.map((tag) => h('button.chip', { onclick: () => go(`#/?tags=${encodeURIComponent(tag)}`) }, `#${tag}`)),
+                  ref.tags.map((tag) => h('button.chip', { onclick: () => go(`${listBase}?tags=${encodeURIComponent(tag)}`) }, `#${tag}`)),
                 )
               : h('span.faint', t('detail.noTags')),
           ),

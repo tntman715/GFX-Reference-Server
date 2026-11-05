@@ -34,9 +34,18 @@ function toQuery(s) {
   return p.toString();
 }
 
-export function mountExplore(root, params) {
+/**
+ * 둘러보기. scope 가 'gd' 면 지메(썸네일 · 기타 작업물)만, 'nongd' 면 비지메만 보여 줌.
+ * 지메와 비지메는 태그도 따로 씀.
+ */
+export function mountExplore(root, params, opts = {}) {
   const meta = store.meta;
+  const scope = opts.scope === 'nongd' ? 'nongd' : 'gd';
+  const basePath = scope === 'nongd' ? '#/nongd' : '#/';
+  const scopeCats = (meta?.categories ?? []).filter((c) => (c.tagGroup ?? 'gd') === scope);
+  const scopeTags = store.tagsInGroup(scope);
   const state = fromParams(params);
+  if (state.category && !scopeCats.some((c) => c.key === state.category)) state.category = '';
   let grid = null;
 
   // ── 검색창 ──
@@ -79,7 +88,8 @@ export function mountExplore(root, params) {
   const activeEl = h('div.active-filters');
   const resultsEl = h('div');
 
-  const total = meta?.stats?.total ?? 0;
+  const catCounts = meta?.stats?.categories ?? {};
+  const total = scopeCats.reduce((n, c) => n + (catCounts[c.key] ?? 0), 0);
 
   // ── 표지: 인기 레퍼런스 한 장을 배경으로 깔고 큰 워드마크 ──
   const heroBg = h('div.hero-bg', { 'aria-hidden': 'true' });
@@ -91,7 +101,7 @@ export function mountExplore(root, params) {
       'div.hero-top',
       h(
         'div.hero-pills',
-        (meta?.categories ?? []).slice(0, 3).map((c) =>
+        scopeCats.slice(0, 3).map((c) =>
           h(
             'button',
             { type: 'button', title: t('explore.onlyCategory', { label: categoryLabel(c) }), onclick: () => set({ category: c.key }) },
@@ -103,8 +113,10 @@ export function mountExplore(root, params) {
     ),
     h(
       'div',
-      h('h1.split', { 'aria-label': 'GFX References' }, splitText('GFX References')),
-      h('div.hero-foot', h('p', t('explore.lead', { n: total.toLocaleString() })), heroCover),
+      scope === 'nongd'
+        ? h('h1.split', { 'aria-label': 'Non-GD References' }, splitText('Non-GD'))
+        : h('h1.split', { 'aria-label': 'GFX References' }, splitText('GFX References')),
+      h('div.hero-foot', h('p', t(scope === 'nongd' ? 'explore.leadNonGd' : 'explore.lead', { n: total.toLocaleString() })), heroCover),
     ),
   );
   loadCover();
@@ -116,7 +128,7 @@ export function mountExplore(root, params) {
       h('div.searchbox', h('span.icon', { html: searchIcon() }), input, h('kbd', '/')),
       h(
         'div.filters',
-        h('div.filter-row', h('span.label', 'Category'), h('div.items', catSeg)),
+        scopeCats.length > 1 ? h('div.filter-row', h('span.label', 'Category'), h('div.items', catSeg)) : null,
         h('div.filter-row', h('span.label', 'Color'), colorItems),
         h('div.filter-row', h('span.label', 'Tags'), tagItems),
       ),
@@ -129,7 +141,7 @@ export function mountExplore(root, params) {
     clear(catSeg);
     const counts = meta?.stats?.categories ?? {};
     catSeg.append(h('button', { class: state.category ? '' : 'on', onclick: () => set({ category: '' }) }, t('all')));
-    for (const c of meta?.categories ?? []) {
+    for (const c of scopeCats) {
       catSeg.append(
         h(
           'button',
@@ -156,7 +168,7 @@ export function mountExplore(root, params) {
     colorItems.append(h('span.color-picker', picker, h('span.hint', state.hex ? state.hex : t('explore.customColor'))));
 
     clear(tagItems);
-    for (const tag of meta?.tags ?? []) {
+    for (const tag of scopeTags) {
       const on = state.tags.includes(tag.name);
       tagItems.append(
         h(
@@ -210,7 +222,7 @@ export function mountExplore(root, params) {
 
   async function loadCover() {
     try {
-      const { items } = await api.get('/api/refs', { sort: 'popular', period: 'all', page: 1, limit: 6 });
+      const { items } = await api.get('/api/refs', { sort: 'popular', period: 'all', scope, page: 1, limit: 6 });
       const pick = items[Math.floor(Math.random() * items.length)];
       if (!pick) return;
       const img = new Image();
@@ -238,6 +250,7 @@ export function mountExplore(root, params) {
         api.get('/api/refs', {
           q: s.q,
           category: s.category,
+          scope,
           tags: s.tags,
           color: s.color,
           hex: s.hex,
@@ -260,7 +273,7 @@ export function mountExplore(root, params) {
   function set(patch) {
     Object.assign(state, patch);
     const q = toQuery(state);
-    history.replaceState(null, '', `#/${q ? `?${q}` : ''}`);
+    history.replaceState(null, '', `${basePath}${q ? `?${q}` : ''}`);
     renderControls();
     reload();
   }

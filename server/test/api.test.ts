@@ -56,7 +56,8 @@ describe('공개 API', () => {
     const m = await json(await app.request('/api/meta'));
     expect(m.categories.map((c: any) => c.key)).toEqual(['gm_thumbnail', 'gm_artwork', 'non_gm']);
     expect(m.categories[0]).toMatchObject({ label: '지메 썸네일', requiresMapName: true });
-    expect(m.tags).toHaveLength(11);
+    expect(m.tags.filter((t: any) => t.group === 'gd')).toHaveLength(11);
+    expect(m.tagGroups.map((g: any) => g.key)).toEqual(['gd', 'nongd']);
     expect(m.tags.find((t: any) => t.name === 'glow').count).toBe(1);
     expect(m.reactions).toEqual(['⭐', '🔥', '👍']);
     expect(m.scoring.reactionPoints).toEqual({ '⭐': 2, '🔥': 1.5, '👍': 1 });

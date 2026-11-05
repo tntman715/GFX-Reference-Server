@@ -155,7 +155,7 @@ export class DiscordArchive implements OriginalArchive {
     // 분류가 바뀌어 다른 채널로 가야 하면 그대로 둠 (원본 위치는 유지)
   }
 
-  async fetch(ref: Reference): Promise<OriginalFile | null> {
+  async fetch(ref: Reference, opts: { cache?: boolean } = {}): Promise<OriginalFile | null> {
     const hit = this.cache.get(ref.id);
     if (hit) return hit.file;
     const msg = await this.message(ref);
@@ -168,7 +168,7 @@ export class DiscordArchive implements OriginalArchive {
       contentType: original.contentType ?? ref.originalMime,
       filename: original.name,
     };
-    this.remember(ref.id, file);
+    if (opts.cache !== false) this.remember(ref.id, file);
     return file;
   }
 

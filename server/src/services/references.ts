@@ -13,7 +13,7 @@ import type { Actor, Creator, PublicReference, Reference, UserInfo } from '../ty
 import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
 import { colorSimilarity, hexMatchScore, hexToLab, type PaletteColor } from './color.js';
-import { hammingDistance, processImage } from './image.js';
+import { hammingDistance, makeHqPreview, processImage } from './image.js';
 
 const log = logger('refs');
 
@@ -210,6 +210,15 @@ export class ReferenceService {
     const now = new Date();
     const previewKey = `previews/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.webp`;
     await this.storage.put(previewKey, img.preview.data, img.preview.mime);
+    // 상세 보기용 고화질 미리보기 — 실패해도 등록은 계속 (나중에 다시 채움)
+    const hq = await this.storeHq(file.buffer, now).catch((err) => {
+      log.warn('고화질 미리보기 만들기 실패 — 나중에 다시 시도합니다.', err);
+      return null;
+    });
+    const dropPreviews = async () => {
+      await this.storage.delete(previewKey).catch(() => undefined);
+      if (hq) await this.storage.delete(hq.key).catch(() => undefined);
+    };
 
     let id: number;
     try {
@@ -242,10 +251,11 @@ export class ReferenceService {
           newId,
           tags.map((t) => t.id),
         );
+        if (hq) await refsRepo.setHq(q, newId, hq.key, hq.width, hq.height);
         return newId;
       });
     } catch (err) {
-      await this.storage.delete(previewKey).catch(() => undefined);
+      await dropPreviews();
       throw err;
     }
 
@@ -260,7 +270,7 @@ export class ReferenceService {
     } catch (err) {
       log.error(`#${id} 원본 보관 실패 — 등록을 취소합니다.`, err);
       await refsRepo.delete(this.db, id).catch(() => undefined);
-      await this.storage.delete(previewKey).catch(() => undefined);
+      await dropPreviews();
       throw new UserError('원본을 디스코드 아카이브에 보관하지 못했습니다. 봇 권한(메시지 보내기 / 파일 첨부)을 확인해 주세요.', {
         status: 502,
         code: 'archive_failed',
@@ -269,6 +279,64 @@ export class ReferenceService {
     this.invalidate();
     log.info(`#${id} 등록: ${title} (${input.category}) by ${input.uploader.username}`);
     return (await refsRepo.get(this.db, id))!;
+  }
+
+  // ── 고화질 미리보기 ─────────────────────────────────────
+
+  private async storeHq(original: Buffer, at = new Date()): Promise<{ key: string; width: number; height: number }> {
+    const out = await makeHqPreview(original, { maxSize: this.config.upload.hqMaxSize, quality: this.config.upload.hqQuality });
+    const key = `hq/${at.getUTCFullYear()}/${String(at.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.webp`;
+    await this.storage.put(key, out.data, 'image/webp');
+    return { key, width: out.width, height: out.height };
+  }
+
+  private hqBackfillRunning = false;
+
+  /**
+   * 고화질 미리보기가 없는 예전 레퍼런스를 하나씩 천천히 채웁니다 (최신부터).
+   * 작은 서버에서도 사이트가 느려지지 않도록 한 장 만들 때마다 쉬어 갑니다.
+   */
+  async backfillHq(opts: { pauseMs?: number; waitMs?: number; signal?: AbortSignal } = {}): Promise<{ done: number; failed: number }> {
+    const pauseMs = opts.pauseMs ?? 3000;
+    const result = { done: 0, failed: 0 };
+    if (this.hqBackfillRunning) return result;
+    this.hqBackfillRunning = true;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    try {
+      // 봇이 아직 로그인 전이면 원본을 못 가져오므로 기다림
+      for (let i = 0; !this.archive.isAvailable(); i++) {
+        if (opts.signal?.aborted || i > 120) return result;
+        await sleep(opts.waitMs ?? 30_000);
+      }
+      const total = await refsRepo.countMissingHq(this.db);
+      if (!total) return result;
+      log.info(`고화질 미리보기 채우기 시작: ${total}개`);
+      const failedIds: number[] = [];
+      while (!opts.signal?.aborted) {
+        const [id] = await refsRepo.missingHq(this.db, failedIds, 1);
+        if (id == null) break;
+        try {
+          const ref = await refsRepo.get(this.db, id);
+          const file = ref ? await this.archive.fetch(ref, { cache: false }) : null;
+          if (!ref || !file) throw new Error('원본을 찾지 못함');
+          const hq = await this.storeHq(file.data, ref.createdAt);
+          // 그사이 지워졌으면 만든 파일도 지움
+          if (!(await refsRepo.get(this.db, id))) await this.storage.delete(hq.key).catch(() => undefined);
+          else await refsRepo.setHq(this.db, id, hq.key, hq.width, hq.height);
+          result.done++;
+        } catch (err) {
+          failedIds.push(id);
+          result.failed++;
+          log.warn(`#${id} 고화질 미리보기 만들기 실패: ${err instanceof Error ? err.message : err}`);
+        }
+        if ((result.done + result.failed) % 25 === 0) log.info(`고화질 미리보기 채우는 중: ${result.done + result.failed}/${total}`);
+        await sleep(pauseMs);
+      }
+      log.info(`고화질 미리보기 채우기 끝: 성공 ${result.done}개, 실패 ${result.failed}개`);
+      return result;
+    } finally {
+      this.hqBackfillRunning = false;
+    }
   }
 
   async findDuplicates(dhash: string, excludeId?: number): Promise<Reference[]> {
@@ -362,6 +430,7 @@ export class ReferenceService {
     this.invalidate();
     await this.archive.remove(ref).catch((err) => log.warn(`#${id} 아카이브 메시지 삭제 실패`, err));
     await this.storage.delete(ref.previewKey).catch((err) => log.warn(`#${id} 미리보기 삭제 실패`, err));
+    if (ref.hqKey) await this.storage.delete(ref.hqKey).catch((err) => log.warn(`#${id} 고화질 미리보기 삭제 실패`, err));
     log.info(`#${id} 삭제 by ${actor.id}`);
     return ref;
   }
@@ -503,6 +572,13 @@ export class ReferenceService {
     return this.storage.publicUrl(ref.previewKey) ?? `${this.config.publicBaseUrl}/api/previews/${ref.previewKey}`;
   }
 
+  /** 디스코드 아카이브 메시지 링크 (서버 ID 를 모르거나 아카이브가 없으면 null) */
+  discordUrl(ref: Pick<Reference, 'archiveChannelId' | 'archiveMessageId'>): string | null {
+    const guild = this.config.discord.guildId;
+    if (!guild || !ref.archiveChannelId || !ref.archiveMessageId || this.archive.kind !== 'discord') return null;
+    return `https://discord.com/channels/${guild}/${ref.archiveChannelId}/${ref.archiveMessageId}`;
+  }
+
   siteUrl(ref: Pick<Reference, 'id'>): string {
     return `${this.config.publicBaseUrl}/#/ref/${ref.id}`;
   }
@@ -522,8 +598,10 @@ export class ReferenceService {
       originalSize: ref.originalSize,
       originalMime: ref.originalMime,
       preview: { url: this.previewUrl(ref), width: ref.previewWidth, height: ref.previewHeight },
+      hq: ref.hqKey ? { url: this.previewUrl({ previewKey: ref.hqKey }), width: ref.hqWidth ?? ref.width, height: ref.hqHeight ?? ref.height } : null,
       thumbUrl: `${this.config.publicBaseUrl}/api/refs/${ref.id}/thumb`,
       siteUrl: this.siteUrl(ref),
+      discordUrl: this.discordUrl(ref),
       palette: ref.palette,
       primaryColor: ref.primaryColor,
       colorShares: ref.colorShares,

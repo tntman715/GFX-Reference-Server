@@ -84,6 +84,19 @@ export async function processImage(input: Buffer, opts: ProcessOptions): Promise
   };
 }
 
+/** 상세 보기용 고화질 미리보기 (긴 변 maxSize 이하 WebP). 작은 원본은 키우지 않고 같은 크기로 만듭니다. */
+export async function makeHqPreview(
+  input: Buffer,
+  opts: { maxSize: number; quality: number },
+): Promise<{ data: Buffer; width: number; height: number }> {
+  const out = await sharp(input, { failOn: 'none', animated: false, limitInputPixels: 268_402_689 })
+    .rotate()
+    .resize({ width: opts.maxSize, height: opts.maxSize, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: opts.quality, effort: 4, smartSubsample: true })
+    .toBuffer({ resolveWithObject: true });
+  return { data: out.data, width: out.info.width, height: out.info.height };
+}
+
 /** 64비트 difference hash (16자리 hex). 비슷한 이미지는 해밍 거리가 작습니다. */
 export async function computeDHash(input: Buffer): Promise<string> {
   const { data, info } = await sharp(input, { failOn: 'none', animated: false })

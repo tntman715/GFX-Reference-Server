@@ -266,12 +266,26 @@ export function openDetail(id, { onClose, navigate }) {
     row('Uploaded', fmtDate(ref.createdAt));
     row('Original', `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}`);
 
+    // 처음엔 가벼운 미리보기를 보여 주고, 고화질본을 다 받으면 바꿔 끼움
+    const mediaImg = h('img', { src: ref.preview.url, alt: ref.title, width: ref.preview.width, height: ref.preview.height });
+    const hdBadge = h('span.hd-badge', { title: t('detail.hdLoaded') }, 'HD');
+    if (ref.hq) {
+      const hi = new Image();
+      hi.decoding = 'async';
+      hi.onload = () => {
+        if (!mediaImg.isConnected) return;
+        mediaImg.src = ref.hq.url;
+        hdBadge.classList.add('on');
+      };
+      hi.src = ref.hq.url;
+    }
+
     clear(body).append(
       h(
         'div.detail',
         h(
           'div.detail-media',
-          h('img', { src: ref.preview.url, alt: ref.title, width: ref.preview.width, height: ref.preview.height }),
+          h('div.media-frame', mediaImg, hdBadge),
           paletteBar(ref.palette, 8),
         ),
         h(
@@ -316,6 +330,13 @@ export function openDetail(id, { onClose, navigate }) {
           h(
             'div.actions',
             dlBtn,
+            ref.discordUrl
+              ? h(
+                  'a.btn',
+                  { href: ref.discordUrl, target: '_blank', rel: 'noopener noreferrer', title: t('detail.openDiscordHint') },
+                  t('detail.openDiscord'),
+                )
+              : null,
             dmBtn,
             h(
               'div.row',

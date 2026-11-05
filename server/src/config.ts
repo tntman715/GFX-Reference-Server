@@ -95,6 +95,11 @@ const EnvSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
   PREVIEW_MAX_SIZE: z.coerce.number().int().positive().default(720),
   PREVIEW_QUALITY: z.coerce.number().int().min(30).max(100).default(72),
+  /** 상세 보기용 고화질 미리보기 (긴 변 px · WebP 품질) */
+  HQ_PREVIEW_MAX_SIZE: z.coerce.number().int().positive().default(1920),
+  HQ_PREVIEW_QUALITY: z.coerce.number().int().min(30).max(100).default(90),
+  /** 고화질 미리보기가 없는 예전 레퍼런스를 서버가 천천히 만들어 채울지 */
+  HQ_BACKFILL: bool(true),
   /** dHash 해밍 거리 이하이면 중복으로 의심 (0~64, 0 이면 검사 안 함) */
   DUPLICATE_THRESHOLD: z.coerce.number().int().min(0).max(64).default(5),
 
@@ -161,6 +166,9 @@ export interface Config {
     maxBytes: number;
     previewMaxSize: number;
     previewQuality: number;
+    hqMaxSize: number;
+    hqQuality: number;
+    hqBackfill: boolean;
     duplicateThreshold: number;
     /** 에셋 · 플러그인 · 텍스쳐팩 파일 최대 크기 */
     resourceMaxBytes: number;
@@ -299,6 +307,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxBytes: Math.round(e.MAX_UPLOAD_MB * 1024 * 1024),
       previewMaxSize: e.PREVIEW_MAX_SIZE,
       previewQuality: e.PREVIEW_QUALITY,
+      hqMaxSize: e.HQ_PREVIEW_MAX_SIZE,
+      hqQuality: e.HQ_PREVIEW_QUALITY,
+      hqBackfill: e.HQ_BACKFILL,
       duplicateThreshold: e.DUPLICATE_THRESHOLD,
       resourceMaxBytes: Math.round(e.MAX_RESOURCE_MB * 1024 * 1024),
     },

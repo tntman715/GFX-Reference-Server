@@ -25,6 +25,7 @@ export interface OriginalArchive {
   store(ref: Reference, file: OriginalUpload): Promise<{ channelId: string; messageId: string }>;
   /** 레퍼런스 정보가 바뀌었을 때 아카이브 메시지(임베드)를 갱신 */
   refresh(ref: Reference): Promise<void>;
-  fetch(ref: Reference): Promise<OriginalFile | null>;
+  /** cache: false 면 원본 캐시에 넣지 않음 (고화질 미리보기 채우기처럼 한 번만 쓰는 경우) */
+  fetch(ref: Reference, opts?: { cache?: boolean }): Promise<OriginalFile | null>;
   remove(ref: Reference): Promise<void>;
 }

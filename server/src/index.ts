@@ -50,6 +50,14 @@ async function main() {
   if (bot) {
     // 봇 로그인이 실패해도 사이트 검색은 계속 동작하도록 HTTP 서버를 먼저 띄움
     bot.start().catch((err) => log.error('디스코드 봇 로그인 실패 — DISCORD_TOKEN 과 봇 권한을 확인해 주세요.', err));
+    if (config.upload.hqBackfill) {
+      // 봇이 준비되고 사이트가 한숨 돌린 뒤 천천히 시작
+      setTimeout(() => {
+        ctx.refs
+          .backfillHq({ pauseMs: config.lowMemory ? 4000 : 1000 })
+          .catch((err) => log.error('고화질 미리보기 채우기 중단', err));
+      }, 60_000).unref();
+    }
   } else {
     log.warn('디스코드 봇 없이 실행 중입니다. 업로드는 할 수 없고, 원본은 로컬 폴더(data/originals)에서 제공합니다.');
   }

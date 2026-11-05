@@ -39,6 +39,10 @@ export interface Reference {
   previewWidth: number;
   previewHeight: number;
   previewSize: number;
+  /** 상세 보기용 고화질 미리보기 (아직 없으면 null) */
+  hqKey: string | null;
+  hqWidth: number | null;
+  hqHeight: number | null;
   palette: PaletteColor[];
   colorHist: number[];
   colorShares: Record<ColorFamily, number>;
@@ -73,8 +77,12 @@ export interface PublicReference {
   originalSize: number;
   originalMime: string;
   preview: { url: string; width: number; height: number };
+  /** 상세 보기용 고화질 미리보기 (아직 없으면 null) */
+  hq: { url: string; width: number; height: number } | null;
   thumbUrl: string;
   siteUrl: string;
+  /** 디스코드 아카이브 메시지로 바로 가는 링크 (서버 멤버만 열 수 있음) */
+  discordUrl: string | null;
   palette: PaletteColor[];
   primaryColor: ColorFamily | null;
   colorShares: Record<ColorFamily, number>;

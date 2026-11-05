@@ -291,6 +291,16 @@ INSERT INTO tags (name, description, created_by) VALUES ('speedart', '제작과�
   ON CONFLICT (name) DO NOTHING;
 `,
   },
+  {
+    id: 7,
+    name: 'hq_previews',
+    sql: `
+-- 상세 보기용 고화질 미리보기 (긴 변 1920px WebP). 예전 레퍼런스는 서버가 천천히 채워 넣습니다.
+ALTER TABLE refs ADD COLUMN hq_key TEXT;
+ALTER TABLE refs ADD COLUMN hq_width INTEGER;
+ALTER TABLE refs ADD COLUMN hq_height INTEGER;
+`,
+  },
 ];
 
 function sqlString(s: string): string {

@@ -123,6 +123,9 @@ export function mapRef(row: Row): Reference {
     previewWidth: Number(row.preview_width),
     previewHeight: Number(row.preview_height),
     previewSize: Number(row.preview_size),
+    hqKey: row.hq_key ?? null,
+    hqWidth: row.hq_width == null ? null : Number(row.hq_width),
+    hqHeight: row.hq_height == null ? null : Number(row.hq_height),
     palette: json(row.palette, []),
     colorHist: json(row.color_hist, []),
     colorShares: json(row.color_shares, {} as Record<ColorFamily, number>),
@@ -212,6 +215,24 @@ export const refsRepo = {
       ],
     );
     return Number(rows[0].id);
+  },
+
+  async setHq(q: Queryable, id: number, key: string, width: number, height: number): Promise<void> {
+    await q.query('UPDATE refs SET hq_key = $2, hq_width = $3, hq_height = $4 WHERE id = $1', [id, key, width, height]);
+  },
+
+  /** 고화질 미리보기가 아직 없는 레퍼런스 (최신부터) */
+  async missingHq(q: Queryable, skip: number[], limit: number): Promise<number[]> {
+    const rows = await q.query<{ id: number }>(
+      `SELECT id FROM refs WHERE hq_key IS NULL AND NOT (id = ANY($1::int[])) ORDER BY id DESC LIMIT $2`,
+      [skip, limit],
+    );
+    return rows.map((r) => Number(r.id));
+  },
+
+  async countMissingHq(q: Queryable): Promise<number> {
+    const rows = await q.query<{ c: number }>('SELECT count(*)::int AS c FROM refs WHERE hq_key IS NULL');
+    return Number(rows[0]?.c ?? 0);
   },
 
   async setArchive(q: Queryable, id: number, channelId: string, messageId: string): Promise<void> {

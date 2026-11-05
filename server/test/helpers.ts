@@ -19,6 +19,8 @@ import { ReferenceService } from '../src/services/references.js';
 import type { ReportService } from '../src/services/reports.js';
 import { ResourceService } from '../src/services/resources.js';
 import { VideoService } from '../src/services/videos.js';
+import { YoutubeKeyStore } from '../src/services/youtube-key.js';
+import { UserError } from '../src/util/errors.js';
 import { LocalStorage } from '../src/storage/local.js';
 import type { UserInfo } from '../src/types.js';
 
@@ -71,14 +73,21 @@ export async function makeContext(env: Record<string, string> = {}, bot: BotBrid
     resources: new ResourceService(db, storage, new LocalResourceStore(path.join(tmp, 'resources')), config),
     reports: null! as ReportService,
     showcase: null! as ShowcaseService,
+    // 테스트에서는 키를 유튜브에 확인하지 않음 ('bad' 가 들어간 키는 안 되는 키)
+    youtubeKey: new YoutubeKeyStore(db, config.youtube.apiKey, {
+      make: () => fakePlaylistApi,
+      check: async (key) => {
+        if (key.includes('bad')) throw new UserError('이 키로는 유튜브 API 를 쓸 수 없어요: API key not valid.', { code: 'youtube_key_invalid' });
+      },
+    }),
     // 테스트에서는 유튜브에 묻지 않음 ('notfound000' 은 없는 영상)
     videos: new VideoService(db, refs, async (id) => (id === 'notfound000' ? { ok: false } : { ok: true, title: `영상 ${id}` })),
   };
   // 테스트에서는 유튜브에 묻지 않음 ('notfound000' 은 없는 영상)
   ctx.showcase = createShowcase(ctx, {
     lookup: async (id) => (id === 'notfound000' ? { ok: false } : { ok: true, title: `영상 ${id}`, author: `채널 ${id.slice(0, 3)}`, authorUrl: null }),
-    playlistApi: () => (config.youtube.apiKey ? fakePlaylistApi : null),
   });
+  await ctx.youtubeKey.load();
   ctx.reports = createReports(ctx);
   ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
   ctx.edits = new EditService(

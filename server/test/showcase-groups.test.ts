@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApi } from '../src/api/app.js';
 import { openDb } from '../src/db/index.js';
 import { migrate } from '../src/db/migrate.js';
+import type { BotBridge } from '../src/context.js';
+import { YoutubeKeyStore } from '../src/services/youtube-key.js';
 import { alice, bob, carol, file, makeContext, makeImage, testPlaylists } from './helpers.js';
 
 type Ctx = Awaited<ReturnType<typeof makeContext>>;
@@ -207,5 +209,67 @@ describe('쇼케이스', () => {
     });
     expect(rep.status).toBe(200);
     expect((await ctx.reports.target('showcase', list.items[0].id))?.title).toMatch(/^쇼케이스 #1/);
+  });
+});
+
+describe('유튜브 API 키 (관리자가 사이트에서 넣기)', () => {
+  const adminBot: BotBridge = {
+    isOnline: () => true,
+    sendOriginalDm: async () => undefined,
+    isGuildAdmin: async (id) => id === alice.id,
+    isGuildMember: async () => true,
+  };
+
+  beforeEach(async () => {
+    ctx = await makeContext({}, adminBot);
+  });
+
+  it('키를 넣으면 바로 재생목록 가져오기가 켜지고, 전체 키는 돌려주지 않음', async () => {
+    const app = createApi(ctx);
+    const as = async (user: typeof alice, path: string, body?: unknown) => {
+      const token = await ctx.community.createSession(user, 'plugin');
+      return app.request(path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    };
+    const key = 'AIzaSyTestKey_0123456789abcdefWXYZ';
+
+    expect(ctx.showcase.playlistEnabled).toBe(false);
+    expect(((await (await as(alice, '/api/admin/youtube-key')).json()) as any).status).toMatchObject({ set: false, source: null });
+
+    // 관리자가 아니면 못 함
+    expect((await as(bob, '/api/admin/youtube-key', { key })).status).toBe(403);
+    // 모양이 다르거나 유튜브에서 안 되는 키는 저장 안 함
+    expect((await as(alice, '/api/admin/youtube-key', { key: 'short' })).status).toBe(400);
+    const bad = await as(alice, '/api/admin/youtube-key', { key: 'AIzaSy_bad_key_0123456789abcdef' });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as any).code).toBe('youtube_key_invalid');
+    expect(ctx.showcase.playlistEnabled).toBe(false);
+
+    const ok = await as(alice, '/api/admin/youtube-key', { key });
+    expect(ok.status).toBe(200);
+    const text = await ok.text();
+    expect(text).not.toContain(key);
+    expect(JSON.parse(text).status).toMatchObject({ set: true, source: 'site', last4: 'WXYZ', updatedBy: alice.id });
+    expect(ctx.showcase.playlistEnabled).toBe(true);
+    expect(((await (await app.request('/api/meta')).json()) as any).showcase.playlist).toBe(true);
+
+    // 서버를 다시 켜도 남아 있음
+    const again = new YoutubeKeyStore(ctx.db, undefined);
+    await again.load();
+    expect(again.status()).toMatchObject({ set: true, source: 'site', last4: 'WXYZ' });
+
+    // 지우면 .env 키(여기서는 없음)로 돌아감
+    const del = await as(alice, '/api/admin/youtube-key/delete', {});
+    expect(((await del.json()) as any).status).toMatchObject({ set: false });
+    expect(ctx.showcase.playlistEnabled).toBe(false);
+  });
+
+  it('사이트 키가 없으면 .env 키를 씀', async () => {
+    const store = new YoutubeKeyStore(ctx.db, 'envKey_0123456789abcdefABCD');
+    await store.load();
+    expect(store.status()).toMatchObject({ set: true, source: 'env', last4: 'ABCD', updatedBy: null });
   });
 });

@@ -13,8 +13,9 @@ import { ImportService } from './services/importer.js';
 import { ReferenceService } from './services/references.js';
 import { ReportService } from './services/reports.js';
 import { RESOURCE_KINDS, ResourceService } from './services/resources.js';
-import { ShowcaseService, youtubePlaylistApi } from './services/showcase.js';
+import { ShowcaseService } from './services/showcase.js';
 import { VideoService } from './services/videos.js';
+import { YoutubeKeyStore } from './services/youtube-key.js';
 import { createStorage } from './storage/index.js';
 import { logger } from './util/log.js';
 
@@ -44,7 +45,9 @@ export async function createContext(config: Config): Promise<AppContext> {
   const archive = new LocalArchive(path.join(config.dataDir, 'originals'));
   const refs = new ReferenceService(db, storage, archive, config);
   const community = new CommunityService(db, config);
-  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db), resources: null!, reports: null!, showcase: null!, videos: new VideoService(db, refs) };
+  const youtubeKey = new YoutubeKeyStore(db, config.youtube.apiKey);
+  await youtubeKey.load();
+  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db), resources: null!, reports: null!, showcase: null!, youtubeKey, videos: new VideoService(db, refs) };
   ctx.resources = new ResourceService(db, storage, new LocalResourceStore(path.join(config.dataDir, 'resources')), config);
   ctx.showcase = createShowcase(ctx);
   ctx.reports = createReports(ctx);
@@ -61,10 +64,10 @@ export async function createContext(config: Config): Promise<AppContext> {
 /** 쇼케이스: 유튜브 API 키가 있으면 재생목록 가져오기, 봇이 켜져 있으면 관리자 알림 · DM */
 export function createShowcase(ctx: AppContext, overrides: Partial<ConstructorParameters<typeof ShowcaseService>[1]> = {}): ShowcaseService {
   const { config } = ctx;
-  const api = config.youtube.apiKey ? youtubePlaylistApi(config.youtube.apiKey) : null;
   return new ShowcaseService(ctx.db, {
     pointsPerVideo: config.scoring.pointsPerShowcase,
-    playlistApi: () => api,
+    // 관리자가 사이트에서 키를 바꾸면 바로 반영되도록 매번 물어봄
+    playlistApi: () => ctx.youtubeKey.api(),
     notifier: () => (ctx.bot?.isOnline() ? ctx.bot : null),
     siteUrl: (p) => `${config.publicBaseUrl}/${p}`,
     ...overrides,

@@ -102,11 +102,13 @@ export function mountShowcase(root, params) {
     }, 280),
   );
 
+  const keyEl = h('div');
   const requestsEl = h('div');
   const results = h('div');
   root.append(
     h('div.page-head', h('div', h('h1', 'Showcase'), h('p', t('sc.lead', { n: points() })))),
     h('div.sc-top', addForm, hint),
+    keyEl,
     requestsEl,
     h('div.res-toolbar', search),
     results,
@@ -165,6 +167,92 @@ export function mountShowcase(root, params) {
     }
   }
 
+  // 관리자: 재생목록 가져오기용 유튜브 API 키 (서버에 접속하지 않고 사이트에서 넣기)
+  async function loadKey() {
+    clear(keyEl);
+    if (!store.me?.isAdmin) return;
+    let status;
+    try {
+      ({ status } = await api.get('/api/admin/youtube-key'));
+    } catch {
+      return;
+    }
+    const summary = status.set
+      ? `YouTube API 키 · 켜짐 (…${status.last4}${status.source === 'env' ? ', 서버 .env' : ''})`
+      : 'YouTube API 키 · 없음 (재생목록 가져오기 꺼짐)';
+    const input = h('input.form-input', {
+      type: 'password',
+      autocomplete: 'off',
+      spellcheck: false,
+      placeholder: status.set ? '새 키로 바꾸려면 붙여 넣기' : 'Google Cloud 에서 만든 API 키 붙여 넣기',
+      'aria-label': 'YouTube API 키',
+    });
+    const saveBtn = h('button.btn.primary', { type: 'submit' }, '확인하고 저장');
+    const setStatus = (next) => {
+      if (store.meta?.showcase) store.meta.showcase.playlist = next.set;
+      hint.textContent = next.set ? t('sc.playlistHint') : t('sc.playlistOff');
+      loadKey();
+    };
+    keyEl.append(
+      h(
+        'details.sc-requests.sc-key',
+        { open: !status.set },
+        h('summary', h('strong', summary)),
+        h(
+          'p.hint',
+          '재생목록을 한꺼번에 가져올 때 쓰는 키예요. 저장하기 전에 유튜브에서 되는 키인지 확인하고, 저장한 키는 서버에만 보관돼요. ' +
+            '화면에는 마지막 4글자만 보여요.',
+        ),
+        h(
+          'form.sc-add',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              const key = input.value.trim();
+              if (!key) return input.focus();
+              saveBtn.disabled = true;
+              try {
+                const res = await api.post('/api/admin/youtube-key', { key });
+                input.value = '';
+                toast('키를 저장했어요. 이제 재생목록 가져오기를 쓸 수 있어요.', 'ok');
+                setStatus(res.status);
+              } catch (err) {
+                handleApiError(err);
+              } finally {
+                saveBtn.disabled = false;
+              }
+            },
+          },
+          input,
+          saveBtn,
+        ),
+        status.source === 'site'
+          ? h(
+              'p.hint',
+              `${status.updatedAt ? fmtDate(status.updatedAt) : ''} 사이트에서 넣은 키 · `,
+              h(
+                'button.btn.sm.danger',
+                {
+                  type: 'button',
+                  onclick: async () => {
+                    if (!window.confirm('사이트에서 넣은 유튜브 API 키를 지울까요?')) return;
+                    try {
+                      const res = await api.post('/api/admin/youtube-key/delete');
+                      toast('키를 지웠어요.', 'ok');
+                      setStatus(res.status);
+                    } catch (err) {
+                      handleApiError(err);
+                    }
+                  },
+                },
+                '키 지우기',
+              ),
+            )
+          : null,
+      ),
+    );
+  }
+
   async function decide(r, action) {
     if (action === 'reject' && !window.confirm(`"${r.title ?? r.playlistId}" 요청을 거절할까요?`)) return;
     try {
@@ -180,8 +268,13 @@ export function mountShowcase(root, params) {
 
   reload();
   loadRequests();
+  loadKey();
+  let seen = me?.id ?? null;
   const off = store.on(() => {
-    if ((store.me?.id ?? null) !== (me?.id ?? null)) loadRequests();
+    if ((store.me?.id ?? null) === seen) return;
+    seen = store.me?.id ?? null;
+    loadRequests();
+    loadKey();
   });
   return {
     update(next) {

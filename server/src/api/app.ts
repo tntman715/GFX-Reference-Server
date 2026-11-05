@@ -778,6 +778,25 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return c.json({ request: req });
   });
 
+  // 관리자: 재생목록 가져오기용 유튜브 API 키 (전체 키는 돌려주지 않고 마지막 4글자만)
+  app.get('/api/admin/youtube-key', async (c) => {
+    await requireAdmin(c);
+    return c.json({ status: ctx.youtubeKey.status() });
+  });
+
+  const youtubeKeyLimiter = new RateLimiter(10, 60_000);
+  app.post('/api/admin/youtube-key', async (c) => {
+    const user = await requireAdmin(c);
+    if (!youtubeKeyLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ key?: string }>().catch(() => ({}) as { key?: string });
+    return c.json({ status: await ctx.youtubeKey.set(body.key, user.id) });
+  });
+
+  app.post('/api/admin/youtube-key/delete', async (c) => {
+    const user = await requireAdmin(c);
+    return c.json({ status: await ctx.youtubeKey.clear(user.id) });
+  });
+
   const reportLimiter = new RateLimiter(10, 60_000);
   app.post('/api/reports', async (c) => {
     const user = requireUser(c);

@@ -206,6 +206,91 @@ ALTER TABLE import_items ADD COLUMN claimed_at TIMESTAMPTZ;
 ALTER TABLE import_items ADD COLUMN decided_by TEXT;
 `,
   },
+  {
+    id: 5,
+    name: 'reports_resources',
+    sql: `
+-- 신고: 레퍼런스나 에셋 · 플러그인 · 텍스쳐팩에 문제가 있을 때 관리자에게 알림
+CREATE TABLE reports (
+  id           SERIAL PRIMARY KEY,
+  target_type  TEXT NOT NULL CHECK (target_type IN ('ref', 'resource')),
+  target_id    INTEGER NOT NULL,
+  reporter_id  TEXT NOT NULL REFERENCES users(discord_id),
+  reason       TEXT NOT NULL,
+  note         TEXT,
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'dismissed')),
+  resolved_by  TEXT,
+  resolved_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX reports_status_idx ON reports (status, created_at DESC);
+CREATE INDEX reports_target_idx ON reports (target_type, target_id);
+
+-- 에셋 · 플러그인 · 텍스쳐팩: 파일(디스코드에 보관) 또는 외부 링크 + 미리보기 사진 / 유튜브 영상
+CREATE TABLE resources (
+  id                  SERIAL PRIMARY KEY,
+  kind                TEXT NOT NULL CHECK (kind IN ('asset', 'plugin', 'texturepack')),
+  title               TEXT NOT NULL,
+  description         TEXT NOT NULL DEFAULT '',
+  creators            JSONB NOT NULL DEFAULT '[]',
+  creator_name        TEXT NOT NULL DEFAULT '',
+  uploader_id         TEXT NOT NULL REFERENCES users(discord_id),
+  file_name           TEXT,
+  file_mime           TEXT,
+  file_size           INTEGER,
+  archive_channel_id  TEXT,
+  archive_message_id  TEXT,
+  link_url            TEXT,
+  preview_key         TEXT,
+  preview_width       INTEGER,
+  preview_height      INTEGER,
+  media               JSONB NOT NULL DEFAULT '[]',
+  downloads           INTEGER NOT NULL DEFAULT 0,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX resources_kind_idx ON resources (kind, created_at DESC);
+CREATE INDEX resources_uploader_idx ON resources (uploader_id);
+
+-- 탭(종류)마다 따로 쓰는 태그
+CREATE TABLE resource_tags (
+  id           SERIAL PRIMARY KEY,
+  kind         TEXT NOT NULL CHECK (kind IN ('asset', 'plugin', 'texturepack')),
+  name         TEXT NOT NULL,
+  description  TEXT,
+  created_by   TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (kind, name)
+);
+CREATE TABLE resource_tag_links (
+  resource_id  INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  tag_id       INTEGER NOT NULL REFERENCES resource_tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (resource_id, tag_id)
+);
+CREATE INDEX resource_tag_links_tag_idx ON resource_tag_links (tag_id);
+`,
+  },
+  {
+    id: 6,
+    name: 'ref_videos',
+    sql: `
+-- 레퍼런스의 제작과정(스피드아트) 유튜브 영상. 누구나(서버 멤버) 남이 올린 레퍼런스에도 붙일 수 있고,
+-- 붙인 사람이 점수를 받습니다. 영상이 붙은 레퍼런스에는 speedart 태그가 자동으로 붙습니다.
+CREATE TABLE ref_videos (
+  id          SERIAL PRIMARY KEY,
+  ref_id      INTEGER NOT NULL REFERENCES refs(id) ON DELETE CASCADE,
+  youtube_id  TEXT NOT NULL,
+  title       TEXT,
+  added_by    TEXT NOT NULL REFERENCES users(discord_id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (ref_id, youtube_id),
+  UNIQUE (ref_id, added_by)
+);
+CREATE INDEX ref_videos_added_by_idx ON ref_videos (added_by);
+INSERT INTO tags (name, description, created_by) VALUES ('speedart', '제작과정(스피드아트) 영상이 붙어 있음', 'system')
+  ON CONFLICT (name) DO NOTHING;
+`,
+  },
 ];
 
 function sqlString(s: string): string {

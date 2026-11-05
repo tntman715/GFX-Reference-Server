@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { reactionPointsText } from '../config.js';
 import { CATEGORIES } from '../constants.js';
 import { logger } from '../util/log.js';
 import type { BotRuntime } from './runtime.js';
@@ -71,12 +72,12 @@ export class HighlightScheduler {
         items
           .map(
             (r, idx) =>
-              `${medals[idx]} [**#${r.id} ${r.title}**](${this.bot.refs.siteUrl(r)}) — ${r.creatorName} · ${CATEGORIES[r.category].label} · 반응 **${r.periodReactions ?? r.reactionTotal}**`,
+              `${medals[idx]} [**#${r.id} ${r.title}**](${this.bot.refs.siteUrl(r)}) — ${r.creatorName} · ${CATEGORIES[r.category].label} · **${(r.periodPoints ?? r.periodReactions ?? r.reactionTotal).toLocaleString()}점** (반응 ${r.periodReactions ?? r.reactionTotal})`,
           )
           .join('\n'),
       )
       .setImage(media.imageUrl)
-      .setFooter({ text: '지난 7일 동안 받은 반응 기준 · 마음에 드는 레퍼런스에 반응을 눌러주세요!' })
+      .setFooter({ text: `지난 7일 동안 받은 반응 점수 기준 (${reactionPointsText(this.bot.config)}) · 마음에 드는 레퍼런스에 반응을 눌러주세요!` })
       .setTimestamp(new Date());
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       items.map((r, idx) => new ButtonBuilder().setURL(this.bot.refs.siteUrl(r)).setLabel(`${idx + 1}위 #${r.id}`).setStyle(ButtonStyle.Link)),

@@ -49,8 +49,12 @@ export interface Reference {
   tags: string[];
   reactions: Record<string, number>;
   reactionTotal: number;
+  /** 붙어 있는 제작과정 영상 수 */
+  videoCount: number;
   /** 인기순 정렬 시 해당 기간 동안 받은 반응 수 */
   periodReactions?: number;
+  /** 인기순 정렬 시 해당 기간 동안 받은 반응 점수 합 (⭐ 2, 🔥 1.5 …) */
+  periodPoints?: number;
 }
 
 /** 외부(웹/플러그인)로 내보내는 형태 */
@@ -77,7 +81,9 @@ export interface PublicReference {
   tags: string[];
   reactions: Record<string, number>;
   reactionTotal: number;
+  videoCount: number;
   periodReactions?: number;
+  periodPoints?: number;
   myReactions?: string[];
   createdAt: string;
 }

@@ -34,7 +34,13 @@ export function refCard(ref, { rank } = {}) {
   };
   img.addEventListener('load', markLoaded, { once: true });
   img.addEventListener('error', () => img.parentElement?.classList.add('ready'), { once: true });
-  const reactLabel = rank !== undefined && ref.periodReactions !== undefined ? ref.periodReactions : ref.reactionTotal;
+  // 인기 순위에서는 반응 점수 합(⭐ 2, 🔥 1.5 …), 그 밖에는 반응 개수
+  const reactLabel =
+    rank !== undefined && ref.periodPoints !== undefined
+      ? ref.periodPoints.toLocaleString()
+      : rank !== undefined && ref.periodReactions !== undefined
+        ? ref.periodReactions
+        : ref.reactionTotal;
   const card = h(
     'a.card',
     { href: `#/ref/${ref.id}`, title: ref.title, style: { '--c': ref.palette[0]?.hex ?? '#ff7a1a' } },
@@ -43,6 +49,7 @@ export function refCard(ref, { rank } = {}) {
       { style: { aspectRatio: `${ref.preview.width} / ${ref.preview.height}`, background: ref.palette[0]?.hex ?? '#111' } },
       img,
       saveButton(ref),
+      ref.videoCount ? h('span.card-video', { title: 'Speedart' }, '▶ Speedart') : null,
       h('span.card-badge', { class: catIndex >= 0 ? `c${catIndex % 3}` : '' }, categoryLabel(cat, true)),
       rank !== undefined ? h('span.card-rank', { class: rank <= 3 ? `r${rank}` : '' }, String(rank)) : null,
     ),
@@ -173,7 +180,7 @@ export class ResultsGrid {
       if (this.page === 1) this.onTotal?.(res.total);
       const start = this.items.length;
       res.items.forEach((ref, i) => {
-        const it = { el: this.card(ref, this.ranked ? { rank: start + i + 1 } : {}), ratio: ref.preview.height / ref.preview.width };
+        const it = { el: this.card(ref, this.ranked ? { rank: start + i + 1 } : {}), ratio: ref.preview ? ref.preview.height / ref.preview.width : 0.625 };
         this.items.push(it);
         this.place(it);
         this.reveal(it.el);

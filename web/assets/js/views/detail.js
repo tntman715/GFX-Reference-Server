@@ -1,9 +1,10 @@
 import { api } from '../api.js';
 import { emptyState, handleApiError, openBoardPicker, openOverlay, paletteBar, requireLogin, ResultsGrid } from '../components.js';
-import { clear, copyText, fmtBytes, fmtDate, h, spinner, toast } from '../dom.js';
+import { avatarSrc, clear, copyText, fmtBytes, fmtDate, h, spinner, toast } from '../dom.js';
 import { categoryLabel, t } from '../i18n.js';
 import { store } from '../store.js';
 import { canEditRef, openEditForm, proposalCard } from './edits.js';
+import { openReportForm } from './reports.js';
 
 /** 레퍼런스 상세 (오버레이) */
 export function openDetail(id, { onClose, navigate }) {
@@ -112,6 +113,103 @@ export function openDetail(id, { onClose, navigate }) {
     );
 
     // ── 대기 중인 수정 제안 (올린 사람/관리자는 받아들이기·거절, 제안한 사람은 취소) ──
+    // ── 제작과정(스피드아트) 영상: 누구나 붙일 수 있고, 붙인 사람이 점수를 받음 ──
+    const videosEl = h('div.detail-videos');
+    const renderVideos = (items, points) => {
+      clear(videosEl);
+      videosEl.append(h('div.field-label', 'Speedart', h('span.faint', t('video.lead', { n: points }))));
+      const list = h('div.video-list');
+      for (const v of items) {
+        const thumb = h(
+          'button.video-thumb',
+          {
+            type: 'button',
+            title: v.title ?? 'YouTube',
+            onclick: () =>
+              thumb.replaceWith(
+                h('iframe.video-frame', {
+                  src: `https://www.youtube-nocookie.com/embed/${v.youtubeId}?autoplay=1`,
+                  title: v.title ?? 'YouTube',
+                  allow: 'autoplay; encrypted-media; picture-in-picture; clipboard-write',
+                  allowfullscreen: true,
+                }),
+              ),
+          },
+          h('img', { src: v.thumbUrl, alt: '', loading: 'lazy' }),
+          h('span.video-play', { 'aria-hidden': 'true' }, '▶'),
+        );
+        list.append(
+          h(
+            'div.video-item',
+            thumb,
+            h(
+              'div.video-meta',
+              v.title ? h('a.video-title', { href: `https://youtu.be/${v.youtubeId}`, target: '_blank', rel: 'noopener noreferrer' }, v.title) : null,
+              h(
+                'span.faint',
+                t('video.addedBy'),
+                ' ',
+                h('a.user-link', { href: `#/user/${v.addedBy.id}` }, h('img', { src: avatarSrc(v.addedBy.avatarUrl), alt: '' }), v.addedBy.name ?? '?'),
+                ` · ${fmtDate(v.createdAt)}`,
+              ),
+              v.canRemove
+                ? h(
+                    'button.btn.sm.ghost',
+                    {
+                      onclick: async () => {
+                        if (!window.confirm(t('video.removeConfirm'))) return;
+                        try {
+                          const res = await api.post(`/api/refs/${ref.id}/videos/${v.id}/delete`);
+                          toast(t('video.removed'), 'ok');
+                          render(res.item);
+                        } catch (err) {
+                          handleApiError(err);
+                        }
+                      },
+                    },
+                    t('video.remove'),
+                  )
+                : null,
+            ),
+          ),
+        );
+      }
+      if (items.length) videosEl.append(list);
+      if (items.length < 3 && !items.some((v) => v.addedBy.id === store.me?.id)) {
+        const input = h('input.form-input', { type: 'url', placeholder: t('video.placeholder'), 'aria-label': t('video.placeholder') });
+        const btn = h('button.btn.sm', { type: 'submit' }, t('video.add', { n: points }));
+        videosEl.append(
+          h(
+            'form.video-add',
+            {
+              onsubmit: async (e) => {
+                e.preventDefault();
+                if (!requireLogin(t('video.login'))) return;
+                if (!input.value.trim()) return input.focus();
+                btn.disabled = true;
+                try {
+                  const res = await api.post(`/api/refs/${ref.id}/videos`, { url: input.value.trim() });
+                  toast(t('video.added', { n: points }), 'ok');
+                  render(res.item);
+                } catch (err) {
+                  handleApiError(err);
+                  btn.disabled = false;
+                }
+              },
+            },
+            input,
+            btn,
+          ),
+        );
+      } else if (!items.length) {
+        videosEl.append(h('span.faint', t('video.none')));
+      }
+    };
+    api
+      .get(`/api/refs/${ref.id}/videos`)
+      .then((res) => renderVideos(res.items, res.points))
+      .catch(() => clear(videosEl));
+
     const proposalsEl = h('div.detail-proposals');
     const loadProposals = async () => {
       if (!store.me) return clear(proposalsEl);
@@ -212,6 +310,7 @@ export function openDetail(id, { onClose, navigate }) {
               ),
             ),
           ),
+          videosEl,
           h('div', h('div.field-label', 'Reactions'), reactions),
           proposalsEl,
           h(
@@ -247,6 +346,29 @@ export function openDetail(id, { onClose, navigate }) {
                 },
                 canEditRef(ref) ? t('edit.edit') : t('edit.propose'),
               ),
+            ),
+            h(
+              'div.row',
+              h('button.btn.sm.ghost', { onclick: () => openReportForm('ref', ref.id, `#${ref.id} ${ref.title}`) }, t('report.button')),
+              canEditRef(ref)
+                ? h(
+                    'button.btn.sm.danger',
+                    {
+                      onclick: async () => {
+                        if (!window.confirm(t('detail.deleteConfirm', { id: ref.id, title: ref.title }))) return;
+                        try {
+                          await api.post(`/api/refs/${ref.id}/delete`);
+                          toast(t('detail.deleted', { id: ref.id }), 'ok');
+                          store.refreshMeta().catch(() => undefined);
+                          go('#/');
+                        } catch (err) {
+                          handleApiError(err);
+                        }
+                      },
+                    },
+                    t('detail.delete'),
+                  )
+                : null,
             ),
             h('p.hint', archiveOk ? t('detail.archiveOk') : t('detail.archiveOff')),
           ),

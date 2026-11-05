@@ -45,6 +45,11 @@ import { TtlMap } from '../util/ttl-map.js';
 import { DiscordArchive } from './archive.js';
 import { commandsJson } from './commands/definitions.js';
 import { HighlightScheduler } from './highlight.js';
+import { TierRoleSync } from './tier-roles.js';
+import { DiscordResourceStore } from './resource-store.js';
+import type { ReportNotice } from '../services/reports.js';
+import { RESOURCE_KINDS, type ResourceKind } from '../services/resources.js';
+import { TIERS, tierInfo } from '../tiers.js';
 import { DiscordImportSource } from './import-source.js';
 import { BRAND_COLOR, previewMedia, withUpdatedReactionCounts } from './ui/card.js';
 import { actorOf, ephemeralFlag, replyError, userInfo } from './util.js';
@@ -61,9 +66,11 @@ export class BotRuntime implements BotBridge {
   readonly client: Client;
   readonly archive: DiscordArchive;
   readonly importSource: DiscordImportSource;
+  readonly resourceStore: DiscordResourceStore;
   readonly viewer: Viewer;
   private pendingUploads = new TtlMap<string, PendingUpload>(10 * 60_000, 200);
   private highlight: HighlightScheduler;
+  readonly tiers: TierRoleSync;
   private tagCache: { at: number; names: string[] } | null = null;
 
   constructor(private readonly ctx: AppContext) {
@@ -74,8 +81,10 @@ export class BotRuntime implements BotBridge {
     });
     this.archive = new DiscordArchive(this.client, ctx.config, (ref) => ctx.refs.siteUrl(ref));
     this.importSource = new DiscordImportSource(this.client, ctx.config);
+    this.resourceStore = new DiscordResourceStore(this.client, ctx.config, (res) => ctx.resources.siteUrl(res));
     this.viewer = new Viewer(ctx.refs, ctx.config.reactionEmojis);
     this.highlight = new HighlightScheduler(this);
+    this.tiers = new TierRoleSync(this);
   }
 
   get refs() {
@@ -87,6 +96,9 @@ export class BotRuntime implements BotBridge {
   get config() {
     return this.ctx.config;
   }
+  get ctxDb() {
+    return this.ctx.db;
+  }
 
   // ── 시작 ────────────────────────────────────────────────
 
@@ -96,6 +108,7 @@ export class BotRuntime implements BotBridge {
         log.info(`디스코드 봇 로그인: ${c.user.tag}`);
         await this.deployCommandsIfChanged().catch((err) => log.error('명령어 등록 실패', err));
         this.highlight.start();
+        this.tiers.start();
         resolve();
       });
     });
@@ -111,6 +124,7 @@ export class BotRuntime implements BotBridge {
 
   async stop(): Promise<void> {
     this.highlight.stop();
+    this.tiers.stop();
     await this.client.destroy();
   }
 
@@ -137,6 +151,40 @@ export class BotRuntime implements BotBridge {
   inviteInfo() {
     const guild = this.config.discord.guildId ? this.client.guilds.cache.get(this.config.discord.guildId) : null;
     return { guildName: guild?.name ?? null, botName: this.client.user?.username ?? null };
+  }
+
+  /** 신고를 관리자 전용 채널(REPORT_CHANNEL_ID)에 올림 */
+  async postReport(notice: ReportNotice): Promise<void> {
+    const channelId = this.config.discord.reportChannelId;
+    if (!channelId) {
+      log.warn(`신고 #${notice.report.id} — REPORT_CHANNEL_ID 가 없어 디스코드 알림을 보내지 않았습니다.`);
+      return;
+    }
+    const ch = await this.client.channels.fetch(channelId);
+    if (!ch?.isSendable()) throw new Error('신고 알림 채널에 메시지를 보낼 수 없습니다.');
+    const { report, target } = notice;
+    const embed = new EmbedBuilder()
+      .setTitle(`🚨 신고 #${report.id} · ${target.title}`.slice(0, 256))
+      .setURL(target.url)
+      .setColor(0xff4d4d)
+      .addFields(
+        { name: '이유', value: report.reasonLabel, inline: true },
+        { name: '신고한 사람', value: `<@${report.reporter.id}>`, inline: true },
+        { name: '올린 사람', value: `<@${target.uploaderId}>`, inline: true },
+        ...(report.note ? [{ name: '내용', value: report.note.slice(0, 1024), inline: false }] : []),
+      )
+      .setTimestamp(new Date(report.createdAt));
+    if (target.imageUrl?.startsWith('https://')) embed.setThumbnail(target.imageUrl);
+    await ch.send({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setURL(target.url).setLabel('신고된 항목 보기').setStyle(ButtonStyle.Link),
+          new ButtonBuilder().setURL(notice.adminUrl).setLabel('신고 목록에서 처리').setStyle(ButtonStyle.Link),
+        ),
+      ],
+      allowedMentions: { parse: [] },
+    });
   }
 
   async notifyUser(userId: string, content: string): Promise<void> {
@@ -205,6 +253,12 @@ export class BotRuntime implements BotBridge {
     switch (i.commandName) {
       case 'upload':
         return this.cmdUpload(i);
+      case 'upload-asset':
+        return this.cmdUploadResource(i, 'asset');
+      case 'upload-plugin':
+        return this.cmdUploadResource(i, 'plugin');
+      case 'upload-texturepack':
+        return this.cmdUploadResource(i, 'texturepack');
       case 'search':
         return this.cmdSearch(i);
       case 'random':
@@ -237,6 +291,53 @@ export class BotRuntime implements BotBridge {
   }
 
   // ── 업로드 ──────────────────────────────────────────────
+
+  /** /업로드에셋 · /업로드플러그인 · /업로드텍스쳐팩 */
+  private async cmdUploadResource(i: ChatInputCommandInteraction, kind: ResourceKind): Promise<void> {
+    const allowed = this.config.discord.uploadChannelIds;
+    if (allowed.length && !allowed.includes(i.channelId)) {
+      throw new UserError(`업로드는 ${allowed.map((c) => `<#${c}>`).join(', ')} 채널에서만 할 수 있어요.`);
+    }
+    const att = i.options.getAttachment('file');
+    const preview = i.options.getAttachment('preview');
+    const link = i.options.getString('link');
+    if (!att && !link) throw new UserError('`파일` 을 첨부하거나 `링크` 를 적어 주세요.');
+    const max = this.config.upload.resourceMaxBytes;
+    if (att && att.size > max) {
+      throw new UserError(`파일이 너무 커요. 최대 ${Math.round(max / 1024 / 1024)}MB 까지 올릴 수 있어요. 더 크면 \`링크\` 옵션으로 올려 주세요.`);
+    }
+    if (preview?.contentType && !preview.contentType.startsWith('image/')) throw new UserError('`미리보기` 는 이미지여야 해요.');
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    const download = async (a: NonNullable<typeof att>) => {
+      const r = await fetch(a.url);
+      if (!r.ok) throw new UserError('디스코드에서 파일을 받아오지 못했어요. 다시 시도해 주세요.');
+      return { buffer: Buffer.from(await r.arrayBuffer()), filename: a.name, contentType: a.contentType ?? null };
+    };
+    const res = await this.ctx.resources.create({
+      kind,
+      title: i.options.getString('title'),
+      description: i.options.getString('description'),
+      creators: i.options.getString('creator'),
+      tags: parseTagList(i.options.getString('tags')),
+      file: att ? await download(att) : null,
+      images: preview ? [await download(preview)] : [],
+      youtube: i.options.getString('youtube'),
+      linkUrl: link,
+      uploader: userInfo(i.user, i.member),
+    });
+    const info = RESOURCE_KINDS[kind];
+    const url = this.ctx.resources.siteUrl(res);
+    const tagText = res.tags.length ? `\n태그: ${res.tags.map((t) => `\`${t}\``).join(' ')}` : '';
+    const embed = new EmbedBuilder()
+      .setTitle(`${info.emoji} ${info.label} #${res.id} · ${res.title}`.slice(0, 256))
+      .setURL(url)
+      .setColor(BRAND_COLOR)
+      .setDescription(`올렸어요! +${this.config.scoring.pointsPerResource[kind]}점${tagText}`);
+    await i.editReply({
+      embeds: [embed],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setURL(url).setLabel('사이트에서 보기').setStyle(ButtonStyle.Link))],
+    });
+  }
 
   private async cmdUpload(i: ChatInputCommandInteraction): Promise<void> {
     const allowed = this.config.discord.uploadChannelIds;
@@ -493,7 +594,7 @@ export class BotRuntime implements BotBridge {
     const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `\`${String(rank).padStart(2)}\``);
     const lines = rows.map(
       (r) =>
-        `${medal(r.rank)} <@${r.userId}> — **${r.score.toLocaleString()}점** · 업로드 ${r.uploads} · 받은 반응 ${r.reactionsReceived}${
+        `${medal(r.rank)} ${tierInfo(r.tier).emoji} <@${r.userId}> — **${r.score.toLocaleString()}점** · 업로드 ${r.uploads} · 받은 반응 ${r.reactionsReceived}${
           r.adjustments ? ` · 보너스 ${r.adjustments > 0 ? '+' : ''}${r.adjustments}` : ''
         }`,
     );
@@ -502,7 +603,7 @@ export class BotRuntime implements BotBridge {
       .setColor(BRAND_COLOR)
       .setDescription(lines.join('\n') || '아직 레퍼런스를 올린 사람이 없어요. `/업로드` 로 첫 번째가 되어보세요!')
       .setFooter({
-        text: `업로드 +${this.config.scoring.pointsPerUpload}점 · 받은 반응 ${reactionPointsText(this.config)} · ${page}/${pages} 페이지`,
+        text: `업로드 +${this.config.scoring.pointsPerUpload}점 · 받은 반응 ${reactionPointsText(this.config)} · ${page}/${pages} 페이지\n티어: ${TIERS.map((t) => `${t.emoji} ${t.label} ${t.rule}`).join(' · ')}`,
       });
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`lb:${page - 1}`).setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
@@ -528,7 +629,7 @@ export class BotRuntime implements BotBridge {
       .join('\n');
     const embed = new EmbedBuilder()
       .setAuthor({ name: p.user.displayName ?? p.user.username, iconURL: p.user.avatarUrl ?? undefined })
-      .setTitle(s ? `${s.score.toLocaleString()}점 · ${s.rank}위` : '아직 점수가 없어요')
+      .setTitle(s ? `${s.score.toLocaleString()}점 · ${s.rank}위 · ${tierInfo(s.tier).emoji} ${tierInfo(s.tier).label}` : '아직 점수가 없어요')
       .setURL(`${this.config.publicBaseUrl}/#/user/${target.id}`)
       .setColor(BRAND_COLOR)
       .addFields(
@@ -758,7 +859,10 @@ export class BotRuntime implements BotBridge {
     let choices: { name: string; value: string | number }[] = [];
 
     if (['tags', 'add_tags', 'remove_tags'].includes(focused.name)) {
-      const all = await this.tagNames();
+      // 에셋 · 플러그인 · 텍스쳐팩 명령어는 그 종류의 태그로
+      const kindByCommand: Record<string, ResourceKind> = { 'upload-asset': 'asset', 'upload-plugin': 'plugin', 'upload-texturepack': 'texturepack' };
+      const kind = kindByCommand[i.commandName];
+      const all = kind ? (await this.ctx.resources.listTags(kind)).map((t) => t.name) : await this.tagNames();
       const parts = value.split(',');
       const last = parts.pop()!.trim().toLowerCase();
       const prefix = parts.map((p) => p.trim()).filter(Boolean);

@@ -163,7 +163,22 @@ export function buildCommands() {
 
   const help = command('help', '도움말', 'GFX References 봇 사용법');
 
-  return [upload, search, random, popular, color, view, edit, del, leaderboard, profile, tags, admin, link, help];
+  // 에셋 · 플러그인 · 텍스쳐팩 올리기 (기존 /업로드 는 그대로 두고 따로)
+  const resourceUpload = (name: string, koName: string, what: string) =>
+    command(name, koName, `${what}을(를) 올립니다 (파일은 디스코드에 보관 · 제작자는 비워도 돼요)`)
+      .addAttachmentOption((o) => ko(o, 'file', '파일', `${what} 파일 (이미지면 그대로 미리보기가 돼요)`))
+      .addStringOption((o) => ko(o, 'title', '제목', '이름 (비우면 파일 이름)').setMaxLength(100))
+      .addStringOption((o) => ko(o, 'tags', '태그', '쉼표로 구분').setMaxLength(300).setAutocomplete(true))
+      .addAttachmentOption((o) => ko(o, 'preview', '미리보기', '미리보기 사진 (선택)'))
+      .addStringOption((o) => ko(o, 'description', '설명', '설명 (선택)').setMaxLength(1500))
+      .addStringOption((o) => ko(o, 'creator', '제작자', '제작자 (선택 · 여러 명이면 쉼표로)').setMaxLength(300))
+      .addStringOption((o) => ko(o, 'youtube', '유튜브', '소개 영상 유튜브 주소 (선택 · 여러 개면 쉼표로)').setMaxLength(500))
+      .addStringOption((o) => ko(o, 'link', '링크', '파일이 너무 크면 대신 다운로드 링크 (선택)').setMaxLength(500));
+  const uploadAsset = resourceUpload('upload-asset', '업로드에셋', '에셋');
+  const uploadPlugin = resourceUpload('upload-plugin', '업로드플러그인', '플러그인');
+  const uploadTexture = resourceUpload('upload-texturepack', '업로드텍스쳐팩', '텍스쳐팩');
+
+  return [upload, uploadAsset, uploadPlugin, uploadTexture, search, random, popular, color, view, edit, del, leaderboard, profile, tags, admin, link, help];
 }
 
 export function commandsJson() {

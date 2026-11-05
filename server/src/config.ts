@@ -58,6 +58,12 @@ const EnvSchema = z.object({
   ARCHIVE_CHANNEL_NON_GM: optionalString,
   /** 주간 인기 썸네일을 올릴 채널 (비우면 자동 게시 안 함) */
   HIGHLIGHT_CHANNEL_ID: optionalString,
+  /** 신고가 들어오면 봇이 알림을 올리는 관리자 전용 채널 */
+  REPORT_CHANNEL_ID: optionalString,
+  /** 에셋 · 플러그인 · 텍스쳐팩 파일을 보관할 채널 (비우면 ARCHIVE_CHANNEL_ID) */
+  RESOURCE_ARCHIVE_CHANNEL_ID: optionalString,
+  /** 랭킹 티어에 맞춰 디스코드 역할(다이아몬드 ~ 브론즈)을 자동으로 주기 */
+  TIER_ROLES: bool(true),
   /** /업로드 를 사용할 수 있는 채널 (비우면 모든 채널) */
   UPLOAD_CHANNEL_IDS: csv,
   /** 관리자 역할 ID 목록 (서버 관리 권한이 있는 사람은 자동으로 관리자) */
@@ -95,6 +101,13 @@ const EnvSchema = z.object({
   // ── 점수 / 반응 ─────────────────────────────────────────
   POINTS_PER_UPLOAD: z.coerce.number().int().default(10),
   POINTS_PER_EDIT: z.coerce.number().min(0).optional(),
+  POINTS_PER_ASSET: z.coerce.number().min(0).default(10),
+  /** 레퍼런스에 제작과정 유튜브 영상을 붙이면 받는 점수 */
+  POINTS_PER_VIDEO: z.coerce.number().min(0).default(10),
+  POINTS_PER_PLUGIN: z.coerce.number().min(0).default(20),
+  POINTS_PER_TEXTUREPACK: z.coerce.number().min(0).default(20),
+  /** 에셋 · 플러그인 · 텍스쳐팩 파일 최대 크기 (디스코드 봇 첨부 한도: 부스트 없는 서버 10MB) */
+  MAX_RESOURCE_MB: z.coerce.number().positive().default(10),
   /** REACTION_POINTS 에 없는 반응의 점수 */
   POINTS_PER_REACTION: z.coerce.number().min(0).default(1),
   REACTION_EMOJIS: z.string().default('⭐,🔥,👍'),
@@ -127,6 +140,9 @@ export interface Config {
     archiveChannelId?: string;
     archiveChannels: Partial<Record<Category, string>>;
     highlightChannelId?: string;
+    reportChannelId?: string;
+    resourceArchiveChannelId?: string;
+    tierRoles: boolean;
     uploadChannelIds: string[];
     adminRoleIds: string[];
     requireGuildMembership: boolean;
@@ -146,6 +162,8 @@ export interface Config {
     previewMaxSize: number;
     previewQuality: number;
     duplicateThreshold: number;
+    /** 에셋 · 플러그인 · 텍스쳐팩 파일 최대 크기 */
+    resourceMaxBytes: number;
   };
   scoring: ScoringConfig;
   reactionEmojis: string[];
@@ -158,6 +176,10 @@ export interface ScoringConfig {
   pointsPerUpload: number;
   /** 수정 제안이 받아들여졌을 때 제안한 사람이 받는 점수 (기본: 업로드 점수의 절반) */
   pointsPerEdit: number;
+  /** 에셋 · 플러그인 · 텍스쳐팩 올리기 점수 */
+  pointsPerResource: Record<'asset' | 'plugin' | 'texturepack', number>;
+  /** 제작과정 영상 붙이기 점수 */
+  pointsPerVideo: number;
   /** reactionPoints 에 없는 반응의 점수 */
   pointsPerReaction: number;
   /** 반응 이모지별 점수. 설정된 반응 이모지는 모두 들어 있음 */
@@ -257,6 +279,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         non_gm: e.ARCHIVE_CHANNEL_NON_GM,
       },
       highlightChannelId: e.HIGHLIGHT_CHANNEL_ID,
+      reportChannelId: e.REPORT_CHANNEL_ID,
+      resourceArchiveChannelId: e.RESOURCE_ARCHIVE_CHANNEL_ID,
+      tierRoles: e.TIER_ROLES,
       uploadChannelIds: e.UPLOAD_CHANNEL_IDS,
       adminRoleIds: e.ADMIN_ROLE_IDS,
       requireGuildMembership: e.REQUIRE_GUILD_MEMBERSHIP,
@@ -275,11 +300,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       previewMaxSize: e.PREVIEW_MAX_SIZE,
       previewQuality: e.PREVIEW_QUALITY,
       duplicateThreshold: e.DUPLICATE_THRESHOLD,
+      resourceMaxBytes: Math.round(e.MAX_RESOURCE_MB * 1024 * 1024),
     },
     scoring: {
       pointsPerUpload: e.POINTS_PER_UPLOAD,
       pointsPerEdit: e.POINTS_PER_EDIT ?? e.POINTS_PER_UPLOAD / 2,
-      pointsPerReaction: e.POINTS_PER_REACTION, reactionPoints: pointsByEmoji },
+      pointsPerResource: { asset: e.POINTS_PER_ASSET, plugin: e.POINTS_PER_PLUGIN, texturepack: e.POINTS_PER_TEXTUREPACK },
+      pointsPerVideo: e.POINTS_PER_VIDEO,
+      pointsPerReaction: e.POINTS_PER_REACTION,
+      reactionPoints: pointsByEmoji,
+    },
     reactionEmojis,
     weeklyHighlight: e.WEEKLY_HIGHLIGHT,
     timezone: e.TIMEZONE,

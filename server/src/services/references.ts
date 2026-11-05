@@ -389,7 +389,13 @@ export class ReferenceService {
   async popular(
     opts: Omit<SearchOptions, 'sort' | 'since'> & { period?: PopularPeriod },
   ): Promise<ListResult> {
-    return refsRepo.search(this.db, { ...opts, sort: 'popular', since: periodSince(opts.period ?? 'all') });
+    const s = this.config.scoring;
+    return refsRepo.search(this.db, {
+      ...opts,
+      sort: 'popular',
+      since: periodSince(opts.period ?? 'all'),
+      reactionWeights: { points: s.reactionPoints, fallback: s.pointsPerReaction },
+    });
   }
 
   async random(filters: Omit<SearchOptions, 'sort' | 'limit' | 'offset'> = {}): Promise<Reference | null> {
@@ -524,7 +530,9 @@ export class ReferenceService {
       tags: ref.tags,
       reactions: ref.reactions,
       reactionTotal: ref.reactionTotal,
+      videoCount: ref.videoCount,
       periodReactions: ref.periodReactions,
+      periodPoints: ref.periodPoints,
       myReactions,
       createdAt: ref.createdAt.toISOString(),
     };

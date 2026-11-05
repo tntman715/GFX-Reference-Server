@@ -36,7 +36,10 @@ async function main() {
   if (config.discord.botEnabled) {
     bot = new BotRuntime(ctx);
     ctx.bot = bot;
-    if (config.archiveDriver === 'discord') ctx.refs.setArchive(bot.archive);
+    if (config.archiveDriver === 'discord') {
+      ctx.refs.setArchive(bot.archive);
+      ctx.resources.setStore(bot.resourceStore);
+    }
   }
 
   const app = createApi(ctx);

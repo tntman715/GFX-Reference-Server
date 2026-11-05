@@ -13,6 +13,8 @@ import { mountImport } from './views/import.js';
 import { mountLeaderboard } from './views/leaderboard.js';
 import { mountPopular } from './views/popular.js';
 import { mountProfile } from './views/profile.js';
+import { mountReports } from './views/reports.js';
+import { mountResource, mountResources } from './views/resources.js';
 import { mountTags } from './views/tags.js';
 import { openUploadForm } from './views/upload.js';
 
@@ -48,6 +50,11 @@ function matchView(path) {
   if (path === '/boards') return { key: 'boards', mount: mountBoards };
   if (path === '/edits') return { key: 'edits', mount: mountEdits };
   if (path === '/tags') return { key: 'tags', mount: mountTags };
+  if (path === '/reports') return { key: 'reports', mount: mountReports };
+  if (path === '/assets') return { key: 'assets', mount: mountResources, extra: { kind: 'asset' } };
+  if (path === '/plugins') return { key: 'plugins', mount: mountResources, extra: { kind: 'plugin' } };
+  if (path === '/texturepacks') return { key: 'texturepacks', mount: mountResources, extra: { kind: 'texturepack' } };
+  if ((m = /^\/res\/(\d+)$/.exec(path))) return { key: `res:${m[1]}`, nav: 'res', mount: mountResource, extra: { id: m[1] } };
   if ((m = /^\/board\/(\d+)$/.exec(path))) return { key: `board:${m[1]}`, nav: 'boards', mount: mountBoard, extra: { id: m[1] } };
   if ((m = /^\/user\/(\d+)$/.exec(path))) return { key: `user:${m[1]}`, nav: 'leaderboard', mount: mountProfile, extra: { id: m[1] } };
   return null;
@@ -141,6 +148,14 @@ function renderAccount() {
     ),
     me.isMember || me.isAdmin ? h('a', { href: '#/import', onclick: () => menu.classList.remove('open') }, t('account.import')) : null,
     me.isAdmin ? h('a', { href: '#/tags', onclick: () => menu.classList.remove('open') }, t('account.tags')) : null,
+    me.isAdmin
+      ? h(
+          'a',
+          { href: '#/reports', onclick: () => menu.classList.remove('open') },
+          t('account.reports'),
+          me.openReports ? h('span.badge', String(me.openReports)) : null,
+        )
+      : null,
     h(
       'button',
       {
@@ -163,7 +178,9 @@ function renderAccount() {
       },
     },
     h('img.avatar', { src: avatarSrc(me.avatarUrl), alt: me.username }),
-    me.pendingEdits ? h('span.badge.dot', { title: t('account.edits') }, String(me.pendingEdits)) : null,
+    me.pendingEdits || me.openReports
+      ? h('span.badge.dot', { title: t('account.edits') }, String((me.pendingEdits ?? 0) + (me.openReports ?? 0)))
+      : null,
   );
   root.append(h('div.account', btn, menu));
 }

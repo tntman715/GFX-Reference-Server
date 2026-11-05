@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { LocalArchive } from './archive/local.js';
+import { LocalResourceStore } from './archive/local-resources.js';
 import type { Config } from './config.js';
 import type { AppContext } from './context.js';
 import { openDb } from './db/index.js';
@@ -10,6 +11,9 @@ import { CommunityService } from './services/community.js';
 import { EditService } from './services/edits.js';
 import { ImportService } from './services/importer.js';
 import { ReferenceService } from './services/references.js';
+import { ReportService } from './services/reports.js';
+import { RESOURCE_KINDS, ResourceService } from './services/resources.js';
+import { VideoService } from './services/videos.js';
 import { createStorage } from './storage/index.js';
 import { logger } from './util/log.js';
 
@@ -39,7 +43,9 @@ export async function createContext(config: Config): Promise<AppContext> {
   const archive = new LocalArchive(path.join(config.dataDir, 'originals'));
   const refs = new ReferenceService(db, storage, archive, config);
   const community = new CommunityService(db, config);
-  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db) };
+  const ctx: AppContext = { config, db, storage, refs, community, bot: null, importer: null!, edits: null!, boards: new BoardService(db), resources: null!, reports: null!, videos: new VideoService(db, refs) };
+  ctx.resources = new ResourceService(db, storage, new LocalResourceStore(path.join(config.dataDir, 'resources')), config);
+  ctx.reports = createReports(ctx);
   ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
   ctx.edits = new EditService(
     db,
@@ -48,4 +54,24 @@ export async function createContext(config: Config): Promise<AppContext> {
     (p) => `${config.publicBaseUrl}/${p}`,
   );
   return ctx;
+}
+
+/** 신고: 대상 정보 찾기와 관리자 채널 알림을 붙여서 만듦 */
+export function createReports(ctx: AppContext): ReportService {
+  const { refs, resources, config } = ctx;
+  return new ReportService(
+    ctx.db,
+    async (type, id) => {
+      if (type === 'ref') {
+        const r = await refs.get(id);
+        return r ? { title: `#${r.id} ${r.title}`, url: refs.siteUrl(r), imageUrl: refs.previewUrl(r), uploaderId: r.uploaderId } : null;
+      }
+      const r = await resources.get(id);
+      if (!r) return null;
+      const pub = resources.toPublic(r);
+      return { title: `${RESOURCE_KINDS[r.kind].label} #${r.id} ${r.title}`, url: pub.siteUrl, imageUrl: pub.preview?.url ?? null, uploaderId: r.uploaderId };
+    },
+    () => (ctx.bot?.isOnline() && ctx.bot.postReport ? ctx.bot.postReport.bind(ctx.bot) : null),
+    (p) => `${config.publicBaseUrl}/${p}`,
+  );
 }

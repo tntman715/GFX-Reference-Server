@@ -4378,3 +4378,654 @@ html.no-grain .profile-head::after {
     display: none;
   }
 }
+
+/* ── 랭킹 티어 / Top 10 ─────────────────────────────── */
+.tier-badge {
+  --tier: #c4c4c4;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tier) 55%, transparent);
+  background: color-mix(in srgb, var(--tier) 14%, transparent);
+  color: var(--tier);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tier-badge em {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.tier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 22px;
+  font-size: 12.5px;
+}
+
+.tier-legend > .faint {
+  margin-right: 4px;
+}
+
+.podium .tier-badge {
+  margin: 6px auto 0;
+}
+
+.top10 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.top10-card {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'rank avatar name score'
+    'rank avatar tier score';
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  transition: border-color var(--fast), transform 0.3s var(--spring);
+}
+
+.top10-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.top10-rank {
+  grid-area: rank;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 26px;
+  color: var(--accent);
+  min-width: 34px;
+}
+
+.top10-card .avatar {
+  grid-area: avatar;
+  width: 40px;
+  height: 40px;
+}
+
+.top10-name {
+  grid-area: name;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top10-card .tier-badge {
+  grid-area: tier;
+  justify-self: start;
+}
+
+.top10-score {
+  grid-area: score;
+  font-size: 15px;
+}
+
+.profile-score .tier-badge {
+  margin-top: 6px;
+}
+
+/* 위험한 동작 버튼 (삭제) */
+.btn.danger {
+  background: rgba(255, 77, 77, 0.12);
+  color: var(--bad);
+}
+
+.btn.danger:hover {
+  background: var(--bad);
+  color: #fff;
+}
+
+/* ── 에셋 · 플러그인 · 텍스쳐팩 ─────────────────────── */
+.res-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.res-toolbar .form-input {
+  flex: 1 1 280px;
+  max-width: 460px;
+}
+
+.res-filter {
+  margin-bottom: 20px;
+}
+
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 22px 16px;
+}
+
+.res-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.res-card.in {
+  animation: card-in 0.6s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+.res-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  transition: transform 0.35s var(--spring), box-shadow var(--fast);
+}
+
+.res-card:hover .res-thumb {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+}
+
+.res-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.res-ext {
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--text-faint);
+}
+
+.res-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.res-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.res-play.sm svg {
+  width: 22px;
+  height: 22px;
+}
+
+.res-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.res-title {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.res-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.res-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.res-back {
+  display: inline-block;
+  margin: 18px 0 14px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.res-back:hover {
+  color: var(--accent);
+}
+
+.res-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+  gap: 28px;
+  margin-bottom: 48px;
+}
+
+.res-media {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.res-viewer {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #040404;
+}
+
+.res-viewer img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.res-viewer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.res-viewer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.res-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.res-strip-item {
+  position: relative;
+  flex: 0 0 auto;
+  width: 110px;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--fast), border-color var(--fast);
+}
+
+.res-strip-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.res-strip-item:hover,
+.res-strip-item.on {
+  opacity: 1;
+}
+
+.res-strip-item.on {
+  border-color: var(--accent);
+}
+
+.res-info {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.res-info h1 {
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.res-info h1 .id {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.res-desc {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.res-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.res-actions > .btn {
+  height: 46px;
+}
+
+.res-actions .row {
+  display: flex;
+  gap: 8px;
+}
+
+.res-actions .faint {
+  font-weight: 500;
+  font-size: 12.5px;
+}
+
+.res-upload-images {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.res-upload-img {
+  position: relative;
+  width: 96px;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.res-upload-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.res-upload-img button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.res-upload-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 96px;
+  aspect-ratio: 16 / 10;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.res-upload-add span {
+  font-size: 11px;
+}
+
+.res-upload-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── 신고 ─────────────────────────────────────────── */
+.report-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-reason {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.report-reason:has(input:checked) {
+  border-color: var(--accent);
+}
+
+/* ── 태그 관리: 종류 고르기 · 새 태그 ───────────────── */
+.tag-admin-bar {
+  margin-bottom: 12px;
+}
+
+.tag-admin-new {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.tag-admin-new .form-input {
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+@media (max-width: 860px) {
+  .res-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .res-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
+
+/* ── 메뉴가 늘어서: 새 탭 색, 좁은 화면에서는 조금 촘촘하게 ── */
+.nav a[data-route='assets'] {
+  --pill: #8be28b;
+}
+.nav a[data-route='plugins'] {
+  --pill: #8fb8ff;
+}
+.nav a[data-route='texturepacks'] {
+  --pill: #ff9fd2;
+}
+
+@media (max-width: 1500px) {
+  .nav {
+    gap: 2px;
+  }
+
+  .nav a,
+  .nav button {
+    gap: 5px;
+    padding: 0 9px;
+    font-size: 13px;
+  }
+
+  .nav-random .label,
+  .bot-status > span {
+    display: none;
+  }
+}
+
+/* 주황 카드(1위) 위에서도 티어 뱃지가 잘 보이게 */
+.podium .tier-badge {
+  background: rgba(0, 0, 0, 0.78);
+  border-color: transparent;
+}
+
+/* ── 제작과정(스피드아트) 영상 ──────────────────────── */
+.detail-videos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-videos:empty {
+  display: none;
+}
+
+.video-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.video-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius);
+  background: #000;
+  cursor: pointer;
+}
+
+.video-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s var(--ease), opacity var(--fast);
+}
+
+.video-thumb:hover img {
+  transform: scale(1.03);
+  opacity: 0.85;
+}
+
+.video-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 38px;
+  margin: -19px 0 0 -27px;
+  border-radius: 10px;
+  background: #ff0033;
+  color: #fff;
+  font-size: 16px;
+}
+
+.video-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+
+.video-title {
+  width: 100%;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-title:hover {
+  color: var(--accent);
+}
+
+.video-meta .user-link img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.video-add {
+  display: flex;
+  gap: 8px;
+}
+
+.video-add .form-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  font-size: 13.5px;
+}
+
+/* 카드: 제작과정 영상이 있으면 표시 */
+.card-video {
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

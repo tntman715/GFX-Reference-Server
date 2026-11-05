@@ -12,7 +12,22 @@ export function mountPopular(root, params) {
   const results = h('div');
 
   root.append(
-    h('div.page-head', h('div', h('h1', 'Popular'), h('p', t('popular.lead'))), periodSeg),
+    h(
+      'div.page-head',
+      h(
+        'div',
+        h('h1', 'Popular'),
+        h(
+          'p',
+          t('popular.lead', {
+            r: (store.meta?.reactions ?? [])
+              .map((e) => `${e} ${store.meta?.scoring?.reactionPoints?.[e] ?? store.meta?.scoring?.pointsPerReaction ?? 1}`)
+              .join(' · '),
+          }),
+        ),
+      ),
+      periodSeg,
+    ),
     h('div.sub-filters', catSeg),
     results,
   );

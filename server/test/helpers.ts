@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { LocalArchive } from '../src/archive/local.js';
+import { LocalResourceStore } from '../src/archive/local-resources.js';
+import { createReports } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import type { AppContext, BotBridge } from '../src/context.js';
 import { type Db, openDb } from '../src/db/index.js';
@@ -13,6 +15,9 @@ import { CommunityService } from '../src/services/community.js';
 import { EditService } from '../src/services/edits.js';
 import { ImportService } from '../src/services/importer.js';
 import { ReferenceService } from '../src/services/references.js';
+import type { ReportService } from '../src/services/reports.js';
+import { ResourceService } from '../src/services/resources.js';
+import { VideoService } from '../src/services/videos.js';
 import { LocalStorage } from '../src/storage/local.js';
 import type { UserInfo } from '../src/types.js';
 
@@ -25,7 +30,7 @@ async function freshDb(): Promise<Db> {
     await migrate(sharedDb);
   }
   await sharedDb.exec(`
-    TRUNCATE board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
+    TRUNCATE ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
     ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (name, description, created_by) VALUES ('${t.name}', '${t.description}', 'system');`).join('\n')}
   `);
   return sharedDb;
@@ -48,7 +53,13 @@ export async function makeContext(env: Record<string, string> = {}, bot: BotBrid
   const archive = new LocalArchive(path.join(tmp, 'originals'));
   const refs = new ReferenceService(db, storage, archive, config);
   const community = new CommunityService(db, config);
-  const ctx = { config, db, storage, refs, community, bot, tmp, importer: null! as ImportService, edits: null! as EditService, boards: new BoardService(db) };
+  const ctx = { config, db, storage, refs, community, bot, tmp, importer: null! as ImportService, edits: null! as EditService, boards: new BoardService(db),
+    resources: new ResourceService(db, storage, new LocalResourceStore(path.join(tmp, 'resources')), config),
+    reports: null! as ReportService,
+    // 테스트에서는 유튜브에 묻지 않음 ('notfound000' 은 없는 영상)
+    videos: new VideoService(db, refs, async (id) => (id === 'notfound000' ? { ok: false } : { ok: true, title: `영상 ${id}` })),
+  };
+  ctx.reports = createReports(ctx);
   ctx.importer = new ImportService(db, refs, () => ctx.bot?.importSource ?? null);
   ctx.edits = new EditService(
     db,

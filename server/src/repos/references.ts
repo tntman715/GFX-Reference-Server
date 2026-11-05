@@ -46,6 +46,8 @@ export interface SearchOptions extends SearchFilters {
   sort?: SearchSort;
   /** 인기순일 때 이 시점 이후의 반응만 집계 */
   since?: Date | null;
+  /** 인기순일 때 반응별 점수 (없으면 반응 개수로) */
+  reactionWeights?: { points: Record<string, number>; fallback: number };
   /** 무작위 정렬을 페이지를 넘겨도 같은 순서로 유지하기 위한 값 */
   seed?: string;
   limit?: number;
@@ -71,7 +73,8 @@ const SELECT_COLUMNS = `
   u.avatar_url AS uploader_avatar,
   COALESCE((SELECT json_agg(t.name ORDER BY t.name) FROM ref_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.ref_id = r.id), '[]'::json) AS tag_names,
   COALESCE((SELECT json_object_agg(x.emoji, x.c) FROM (SELECT emoji, count(*)::int AS c FROM reactions WHERE ref_id = r.id GROUP BY emoji) x), '{}'::json) AS reaction_counts,
-  (SELECT count(*)::int FROM reactions WHERE ref_id = r.id) AS reaction_total`;
+  (SELECT count(*)::int FROM reactions WHERE ref_id = r.id) AS reaction_total,
+  (SELECT count(*)::int FROM ref_videos WHERE ref_id = r.id) AS video_count`;
 
 type Row = Record<string, any>;
 
@@ -130,7 +133,9 @@ export function mapRef(row: Row): Reference {
     tags: json(row.tag_names, []),
     reactions: json(row.reaction_counts, {}),
     reactionTotal: Number(row.reaction_total ?? 0),
+    videoCount: Number(row.video_count ?? 0),
     periodReactions: row.period_reactions === undefined ? undefined : Number(row.period_reactions),
+    periodPoints: row.period_points === undefined ? undefined : Number(row.period_points),
   };
 }
 
@@ -278,10 +283,18 @@ export const refsRepo = {
       case 'oldest':
         order = 'r.created_at ASC, r.id ASC';
         break;
-      case 'popular':
-        extra = `, (SELECT count(*)::int FROM reactions x WHERE x.ref_id = r.id${since ? ` AND x.created_at >= ${since}` : ''}) AS period_reactions`;
-        order = 'period_reactions DESC, reaction_total DESC, r.id DESC';
+      case 'popular': {
+        // 반응마다 점수가 달라서(⭐ 2, 🔥 1.5, 👍 1 …) 점수 합으로 순위를 매김
+        const within = `x.ref_id = r.id${since ? ` AND x.created_at >= ${since}` : ''}`;
+        const w = opts.reactionWeights;
+        const points = w
+          ? `COALESCE(sum(COALESCE((${p.add(JSON.stringify(w.points))}::jsonb ->> x.emoji)::numeric, ${p.add(w.fallback)}::numeric)), 0)`
+          : 'count(*)';
+        extra = `, (SELECT count(*)::int FROM reactions x WHERE ${within}) AS period_reactions,
+          (SELECT ${points} FROM reactions x WHERE ${within}) AS period_points`;
+        order = 'period_points DESC, period_reactions DESC, reaction_total DESC, r.id DESC';
         break;
+      }
       case 'random':
         order = opts.seed ? `md5(r.id::text || ${p.add(opts.seed)})` : 'random()';
         break;

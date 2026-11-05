@@ -1,10 +1,26 @@
 import { api } from '../api.js';
 import { emptyState } from '../components.js';
 import { avatarSrc, clear, h, spinner } from '../dom.js';
-import { t } from '../i18n.js';
+import { getLang, t } from '../i18n.js';
 import { store } from '../store.js';
 
 const pad = (n) => String(n).padStart(2, '0');
+
+/** 티어 뱃지 (💎 다이아몬드 …) */
+function tierBadge(key, tiers) {
+  const tier = tiers.find((x) => x.key === key);
+  if (!tier) return null;
+  return h('span.tier-badge', { style: { '--tier': tier.color }, title: getLang() === 'en' ? tier.ruleEn : tier.rule }, tier.emoji, ' ', getLang() === 'en' ? tier.labelEn : tier.label);
+}
+
+/** 티어 기준 안내 */
+function tierLegend(tiers) {
+  return h(
+    'div.tier-legend',
+    h('span.faint', t('ranking.tiers')),
+    tiers.map((x) => h('span.tier-badge', { style: { '--tier': x.color } }, x.emoji, ' ', getLang() === 'en' ? x.labelEn : x.label, h('em', ` ${getLang() === 'en' ? x.ruleEn : x.rule}`))),
+  );
+}
 
 /** "⭐ +2 · 🔥 +1.5 · 👍 +1" */
 function reactionRules(scoring) {
@@ -24,8 +40,10 @@ export function mountLeaderboard(root, params, { navigate }) {
     clear(body).append(spinner());
     try {
       const data = await api.get('/api/leaderboard', { page, limit: 20 });
-      rules.textContent = `${t('ranking.rules', { u: data.scoring.pointsPerUpload, r: reactionRules(data.scoring) })} · ${t('ranking.edits', { e: data.scoring.pointsPerEdit })}`;
+      rules.textContent = `${t('ranking.rules', { u: data.scoring.pointsPerUpload, r: reactionRules(data.scoring) })} · ${t('ranking.edits', { e: data.scoring.pointsPerEdit })} · ${t('ranking.more', { v: data.scoring.pointsPerVideo, a: data.scoring.pointsPerResource.asset, p: data.scoring.pointsPerResource.plugin, x: data.scoring.pointsPerResource.texturepack })}`;
       clear(body);
+      const tiers = data.tiers ?? [];
+      if (tiers.length) body.append(tierLegend(tiers));
       if (!data.rows.length) {
         body.append(emptyState(t('ranking.empty')));
         return;
@@ -46,11 +64,34 @@ export function mountLeaderboard(root, params, { navigate }) {
                 h('img.avatar.lg', { src: avatarSrc(r.avatarUrl), alt: '' }),
                 h('div.name', r.displayName || r.username),
                 h('div.score', t('ranking.points', { n: r.score.toLocaleString() })),
+                tierBadge(r.tier, tiers),
                 h('div.hint', t('ranking.detail', { u: r.uploads, r: r.reactionsReceived })),
               ),
             ),
           ),
         );
+        // 4 ~ 10위는 카드로 크게
+        const next = rows.slice(0, 7);
+        rows = rows.slice(7);
+        if (next.length) {
+          body.append(
+            h('div.section-title', h('h2', 'Top 10')),
+            h(
+              'div.top10',
+              next.map((r) =>
+                h(
+                  'a.top10-card',
+                  { href: `#/user/${r.userId}` },
+                  h('span.top10-rank', pad(r.rank)),
+                  h('img.avatar', { src: avatarSrc(r.avatarUrl), alt: '' }),
+                  h('span.top10-name', r.displayName || r.username),
+                  tierBadge(r.tier, tiers),
+                  h('b.top10-score', t('ranking.points', { n: r.score.toLocaleString() })),
+                ),
+              ),
+            ),
+          );
+        }
       }
       if (rows.length) {
         body.append(
@@ -62,6 +103,7 @@ export function mountLeaderboard(root, params, { navigate }) {
                 'tr',
                 h('th', 'Rank'),
                 h('th', 'Name'),
+                h('th', 'Tier'),
                 h('th.num', 'Score'),
                 h('th.num.hide-sm', 'Uploads'),
                 h('th.num.hide-sm', 'Reactions'),
@@ -76,6 +118,7 @@ export function mountLeaderboard(root, params, { navigate }) {
                   { onclick: () => navigate(`#/user/${r.userId}`) },
                   h('td.rank-cell', pad(r.rank)),
                   h('td', h('div.who-cell', h('img.avatar', { src: avatarSrc(r.avatarUrl), alt: '' }), r.displayName || r.username)),
+                  h('td', tierBadge(r.tier, tiers)),
                   h('td.num', h('b', r.score.toLocaleString())),
                   h('td.num.hide-sm', String(r.uploads)),
                   h('td.num.hide-sm', String(r.reactionsReceived)),

@@ -6,6 +6,9 @@ import type { CommunityService } from './services/community.js';
 import type { EditService } from './services/edits.js';
 import type { ImportService, ImportSource } from './services/importer.js';
 import type { ReferenceService } from './services/references.js';
+import type { ReportNotice, ReportService } from './services/reports.js';
+import type { ResourceService } from './services/resources.js';
+import type { VideoService } from './services/videos.js';
 import type { PreviewStorage } from './storage/types.js';
 import type { Reference } from './types.js';
 
@@ -23,6 +26,8 @@ export interface BotBridge {
   isGuildMember?(userId: string): Promise<boolean>;
   /** 사용자에게 디스코드 DM 알림 보내기 (DM 을 막아 두었으면 조용히 실패) */
   notifyUser?(userId: string, content: string): Promise<void>;
+  /** 신고를 관리자 전용 채널에 올리기 */
+  postReport?(notice: ReportNotice): Promise<void>;
   /** 예전 채팅 채널에서 레퍼런스를 옮겨올 때 메시지/원본을 읽는 기능 */
   importSource?: ImportSource;
 }
@@ -36,5 +41,8 @@ export interface AppContext {
   importer: ImportService;
   edits: EditService;
   boards: BoardService;
+  resources: ResourceService;
+  reports: ReportService;
+  videos: VideoService;
   bot: BotBridge | null;
 }

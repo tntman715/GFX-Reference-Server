@@ -59,8 +59,13 @@ export const api = {
   },
 
   /** 원본 다운로드: fetch → blob → 저장 */
-  async download(id) {
-    const res = await fetch(url(`/api/refs/${id}/original`), { credentials: 'include' });
+  download(id) {
+    return this.downloadFile(`/api/refs/${id}/original`, `reference-${id}`);
+  },
+
+  /** 아무 파일 다운로드 (에셋 · 플러그인 · 텍스쳐팩 등) */
+  async downloadFile(path, fallbackName) {
+    const res = await fetch(url(path), { credentials: 'include' });
     if (!res.ok) {
       let data = null;
       try {
@@ -72,7 +77,7 @@ export const api = {
     const cd = res.headers.get('content-disposition') || '';
     const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
     const plain = /filename="([^"]+)"/i.exec(cd);
-    const name = star ? decodeURIComponent(star[1]) : plain ? plain[1] : `reference-${id}`;
+    const name = star ? decodeURIComponent(star[1]) : plain ? plain[1] : fallbackName;
     const href = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = href;

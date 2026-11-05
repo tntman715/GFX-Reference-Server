@@ -22,7 +22,10 @@ import type { SearchOptions } from '../repos/references.js';
 import sharp from 'sharp';
 import { toJpegThumb } from '../services/image.js';
 import { DuplicateError } from '../services/references.js';
+import { REPORT_REASONS } from '../services/reports.js';
+import { isResourceKind, RESOURCE_KIND_KEYS, RESOURCE_KINDS, RESOURCE_LIMITS } from '../services/resources.js';
 import { isSafeKey } from '../storage/types.js';
+import { TIERS } from '../tiers.js';
 import type { EditProposal } from '../services/edits.js';
 import type { Reference, UserInfo } from '../types.js';
 import { avatarUrl } from '../util/discord.js';
@@ -157,7 +160,10 @@ export function createApi(ctx: AppContext): Hono<Env> {
       sorts: SORTS,
       periods: Object.entries(POPULAR_PERIODS).map(([key, v]) => ({ key, label: v.label })),
       scoring: config.scoring,
-      upload: { maxBytes: config.upload.maxBytes },
+      upload: { maxBytes: config.upload.maxBytes, resourceMaxBytes: config.upload.resourceMaxBytes },
+      tiers: TIERS,
+      resourceKinds: RESOURCE_KIND_KEYS.map((key) => ({ key, ...RESOURCE_KINDS[key], points: config.scoring.pointsPerResource[key] })),
+      reportReasons: Object.entries(REPORT_REASONS).map(([key, label]) => ({ key, label })),
       stats,
       bot: { online: botOnline },
       archive: { available: refs.archiveAvailable, kind: config.archiveDriver },
@@ -314,6 +320,14 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return list.map((p) => ({ ...p, ref: pub.get(p.refId) ?? null }));
   };
 
+  // 레퍼런스 삭제: 관리자 또는 올린 사람 (디스코드 /삭제 와 같음)
+  app.post('/api/refs/:id/delete', async (c) => {
+    const user = requireUser(c);
+    const ref = await refs.delete(refIdParam(c), { id: user.id, isAdmin: await viewerIsAdmin(user.id) });
+    log.info(`#${ref.id} 사이트에서 삭제 by ${user.username}`);
+    return c.json({ ok: true, id: ref.id });
+  });
+
   app.get('/api/refs/:id/proposals', async (c) => {
     const ref = await refs.require(refIdParam(c));
     const user = c.get('user');
@@ -460,7 +474,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
     const page = intParam(c.req.query('page'), 1, 1, 1000);
     const pageSize = intParam(c.req.query('limit'), 20, 1, 50);
     const { rows, total } = await community.leaderboard(page, pageSize);
-    return c.json({ rows, total, page, pageSize, scoring: config.scoring });
+    return c.json({ rows, total, page, pageSize, scoring: config.scoring, tiers: TIERS });
   });
 
   app.get('/api/users/:id', async (c) => {
@@ -656,6 +670,180 @@ export function createApi(ctx: AppContext): Hono<Env> {
     return c.json({ similar: await importer.suggest(nameField(c.req.query('field')), c.req.query('name') ?? '') });
   });
 
+  // ── 제작과정(스피드아트) 영상 ─────────────────────────────
+  const videoLimiter = new RateLimiter(10, 60_000);
+  const publicVideos = async (refId: number, viewerId: string | undefined) => {
+    const ref = await refs.require(refId);
+    const isAdmin = viewerId ? await viewerIsAdmin(viewerId) : false;
+    return (await ctx.videos.list(refId)).map((v) => ({
+      ...v,
+      thumbUrl: `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg`,
+      canRemove: !!viewerId && (isAdmin || viewerId === v.addedBy.id || viewerId === ref.uploaderId),
+    }));
+  };
+
+  app.get('/api/refs/:id/videos', async (c) => {
+    return c.json({ items: await publicVideos(refIdParam(c), c.get('user')?.id), points: config.scoring.pointsPerVideo });
+  });
+
+  app.post('/api/refs/:id/videos', async (c) => {
+    const user = await requireMember(c);
+    if (!videoLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ url?: string }>().catch(() => ({}) as { url?: string });
+    await ctx.videos.add(refIdParam(c), body.url, user);
+    const [item] = await refs.toPublicList([await refs.require(refIdParam(c))], user.id);
+    return c.json({ items: await publicVideos(refIdParam(c), user.id), item });
+  });
+
+  app.post('/api/refs/:id/videos/:videoId/delete', async (c) => {
+    const user = requireUser(c);
+    const videoId = Number.parseInt(c.req.param('videoId') ?? '', 10);
+    if (!Number.isInteger(videoId) || videoId <= 0) throw new NotFoundError();
+    await ctx.videos.remove(refIdParam(c), videoId, { id: user.id, isAdmin: await viewerIsAdmin(user.id) });
+    const [item] = await refs.toPublicList([await refs.require(refIdParam(c))], user.id);
+    return c.json({ items: await publicVideos(refIdParam(c), user.id), item });
+  });
+
+  // ── 신고 ────────────────────────────────────────────────
+  const reportLimiter = new RateLimiter(10, 60_000);
+  app.post('/api/reports', async (c) => {
+    const user = requireUser(c);
+    if (!reportLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const body = await c.req.json<{ targetType?: string; targetId?: number; reason?: string; note?: string }>().catch(() => ({}) as Record<string, never>);
+    const type = body.targetType === 'resource' ? 'resource' : 'ref';
+    const id = Number(body.targetId);
+    if (!Number.isInteger(id) || id <= 0) throw new UserError('신고할 대상이 없어요.');
+    const report = await ctx.reports.create(type, id, user, body.reason, body.note);
+    return c.json({ report });
+  });
+
+  app.get('/api/admin/reports', async (c) => {
+    await requireAdmin(c);
+    const s = c.req.query('status');
+    const status = s === 'resolved' || s === 'dismissed' ? s : 'open';
+    const list = await ctx.reports.list(status);
+    const items = await Promise.all(list.map(async (r) => ({ ...r, target: await ctx.reports.target(r.targetType, r.targetId) })));
+    return c.json({ items });
+  });
+
+  app.post('/api/admin/reports/:id', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ status?: string }>().catch(() => ({}) as { status?: string });
+    const status = body.status === 'dismissed' ? 'dismissed' : 'resolved';
+    return c.json({ report: await ctx.reports.close(refIdParam(c), status, { id: user.id, isAdmin: true }) });
+  });
+
+  // ── 에셋 · 플러그인 · 텍스쳐팩 ───────────────────────────
+  const resourceKind = (v: string | undefined) => {
+    if (!isResourceKind(v)) throw new UserError('종류(asset / plugin / texturepack)를 골라 주세요.');
+    return v;
+  };
+
+  app.get('/api/resources', async (c) => {
+    const q = c.req.query();
+    const pageSize = intParam(q.limit, 24, 1, 60);
+    const page = intParam(q.page, 1, 1, 10_000);
+    const offset = (page - 1) * pageSize;
+    const { items, total } = await ctx.resources.list({
+      kind: q.kind ? resourceKind(q.kind) : undefined,
+      q: q.q,
+      tags: (q.tags ?? '').split(',').filter(Boolean),
+      uploaderId: q.uploader,
+      sort: q.sort === 'downloads' ? 'downloads' : 'newest',
+      limit: pageSize,
+      offset,
+    });
+    return c.json({ items: items.map((r) => ctx.resources.toPublic(r)), total, page, pageSize, hasMore: offset + items.length < total });
+  });
+
+  app.get('/api/resources/tags', async (c) => {
+    return c.json({ tags: await ctx.resources.listTags(resourceKind(c.req.query('kind'))) });
+  });
+
+  app.get('/api/resources/:id', async (c) => {
+    return c.json({ item: ctx.resources.toPublic(await ctx.resources.require(refIdParam(c))) });
+  });
+
+  app.get('/api/resources/:id/file', async (c) => {
+    const user = requireUser(c);
+    if (!downloadLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+    const res = await ctx.resources.require(refIdParam(c));
+    const file = await ctx.resources.fetchFile(res);
+    return c.body(new Uint8Array(file.data), 200, {
+      'Content-Type': file.contentType,
+      'Content-Length': String(file.data.length),
+      'Content-Disposition': contentDisposition('attachment', file.filename),
+      'Cache-Control': 'private, no-store',
+      'Access-Control-Expose-Headers': 'Content-Disposition',
+    });
+  });
+
+  app.post(
+    '/api/resources',
+    bodyLimit({
+      maxSize: config.upload.resourceMaxBytes + RESOURCE_LIMITS.images * RESOURCE_LIMITS.imageBytes + 1024 * 1024,
+      onError: (c) => c.json({ error: '파일이 너무 커요.', code: 'too_large' }, 413),
+    }),
+    async (c) => {
+      const user = await requireMember(c);
+      if (!uploadLimiter.take(user.id)) throw new UserError('잠시 후 다시 시도해 주세요.', { status: 429, code: 'rate_limited' });
+      const form = await c.req.parseBody({ all: true });
+      const text = (k: string) => {
+        const v = form[k];
+        return typeof v === 'string' ? v : Array.isArray(v) && typeof v[0] === 'string' ? v[0] : null;
+      };
+      const files = (k: string) => {
+        const v = form[k];
+        return (Array.isArray(v) ? v : v ? [v] : []).filter((f): f is File => f instanceof File && f.size > 0);
+      };
+      const toUpload = async (f: File) => ({ buffer: Buffer.from(await f.arrayBuffer()), filename: f.name || 'file', contentType: f.type || null });
+      const [file] = files('file');
+      const res = await ctx.resources.create({
+        kind: resourceKind(text('kind') ?? undefined),
+        title: text('title'),
+        description: text('description'),
+        creators: text('creators'),
+        tags: (text('tags') ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        file: file ? await toUpload(file) : null,
+        images: await Promise.all(files('images').map(toUpload)),
+        youtube: text('youtube'),
+        linkUrl: text('linkUrl'),
+        uploader: user,
+      });
+      return c.json({ item: ctx.resources.toPublic(res) });
+    },
+  );
+
+  app.post('/api/resources/:id/delete', async (c) => {
+    const user = requireUser(c);
+    const res = await ctx.resources.delete(refIdParam(c), { id: user.id, isAdmin: await viewerIsAdmin(user.id) });
+    return c.json({ ok: true, id: res.id });
+  });
+
+  // 종류별 태그 관리 (관리자)
+  app.post('/api/admin/resource-tags', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ kind?: string; name?: string; description?: string }>().catch(() => ({}) as Record<string, never>);
+    return c.json({ tag: await ctx.resources.addTag(resourceKind(body.kind), String(body.name ?? ''), body.description ?? null, { id: user.id, isAdmin: true }) });
+  });
+
+  app.post('/api/admin/resource-tags/rename', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ kind?: string; from?: string; to?: string }>().catch(() => ({}) as Record<string, never>);
+    const res = await ctx.resources.renameTag(resourceKind(body.kind), String(body.from ?? ''), String(body.to ?? ''), { id: user.id, isAdmin: true });
+    return c.json({ from: res.from, to: res.to, refs: res.count });
+  });
+
+  app.post('/api/admin/resource-tags/delete', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ kind?: string; name?: string }>().catch(() => ({}) as Record<string, never>);
+    await ctx.resources.removeTag(resourceKind(body.kind), String(body.name ?? ''), { id: user.id, isAdmin: true });
+    return c.json({ ok: true });
+  });
+
   // ── 관리자 전용 ──
   app.get('/api/admin/import/channels', async (c) => {
     await requireAdmin(c);
@@ -720,6 +908,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
             isAdmin: ctx.bot?.isOnline() ? await isAdminUser(user.id) : false,
             isMember: ctx.bot?.isOnline() ? await isMemberUser(user.id) : false,
             pendingEdits: await ctx.edits.pendingCount(user.id),
+            openReports: ctx.bot?.isOnline() && (await isAdminUser(user.id)) ? await ctx.reports.openCount() : 0,
           }
         : null,
     });

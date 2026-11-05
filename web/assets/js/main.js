@@ -79,7 +79,8 @@ function mountBase(path, params) {
     void app.offsetWidth;
     app.classList.add('page-enter');
   }
-  for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('active', a.dataset.route === (v.nav ?? v.key));
+  for (const a of document.querySelectorAll('#nav a, #nav-more a')) a.classList.toggle('active', a.dataset.route === (v.nav ?? v.key));
+  syncMoreActive();
 }
 
 function route() {
@@ -197,7 +198,79 @@ function renderAccount() {
   root.append(h('div.account', btn, menu));
 }
 
-document.addEventListener('click', () => document.querySelector('.menu.open')?.classList.remove('open'));
+document.addEventListener('click', () => {
+  for (const m of document.querySelectorAll('.menu.open')) m.classList.remove('open');
+});
+
+// ── 상단 메뉴 맞추기 ──────────────────────────────────
+// 메뉴가 상단 바에 다 안 들어가면 먼저 촘촘하게(점 · 로고 글자 빼기) 하고,
+// 그래도 넘치면 뒤쪽 메뉴부터 "More" 안으로 옮김. 화면 크기가 바뀔 때마다 다시 맞춤.
+// (휴대폰 화면에서는 메뉴가 아랫줄에서 옆으로 밀리므로 그대로 둠)
+
+function syncMoreActive() {
+  const more = document.getElementById('nav-more');
+  more?.querySelector('button')?.classList.toggle('active', !!more.querySelector('a.active'));
+}
+
+function setupNavFit() {
+  const topbar = document.getElementById('topbar');
+  const nav = document.getElementById('nav');
+  const more = document.getElementById('nav-more');
+  const links = [...nav.querySelectorAll('a[data-route]')];
+  const list = h('div.menu.nav-more-list');
+  const btn = h(
+    'button',
+    {
+      type: 'button',
+      'aria-haspopup': 'true',
+      onclick: (e) => {
+        e.stopPropagation();
+        for (const m of document.querySelectorAll('.menu.open')) if (m !== list) m.classList.remove('open');
+        list.classList.toggle('open');
+      },
+    },
+    'More',
+    h('span.chev', { 'aria-hidden': 'true' }, '▾'),
+  );
+  more.append(btn, list);
+
+  const overflowing = () => nav.scrollWidth > nav.clientWidth + 1;
+  let frame = 0;
+  const fit = () => {
+    frame = 0;
+    topbar.classList.remove('nav-tight');
+    for (const a of links) a.hidden = false;
+    more.hidden = true;
+    clear(list);
+    if (window.innerWidth <= 720 || !overflowing()) return;
+    topbar.classList.add('nav-tight');
+    if (!overflowing()) return;
+    more.hidden = false;
+    const moved = [];
+    for (let i = links.length - 1; i > 0 && overflowing(); i--) {
+      links[i].hidden = true;
+      moved.unshift(links[i]);
+    }
+    for (const a of moved) {
+      list.append(
+        h('a', { href: a.getAttribute('href'), dataset: { route: a.dataset.route }, class: a.classList.contains('active') ? 'active' : '', onclick: () => list.classList.remove('open') }, a.textContent),
+      );
+    }
+    syncMoreActive();
+  };
+  const later = () => {
+    if (!frame) frame = requestAnimationFrame(fit);
+  };
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(later);
+    ro.observe(topbar.querySelector('.topbar-inner'));
+    ro.observe(topbar.querySelector('.topbar-right'));
+  }
+  window.addEventListener('resize', later);
+  onLangChange(later);
+  document.fonts?.ready.then(later);
+  fit();
+}
 
 function renderStatus() {
   const meta = store.meta;
@@ -329,6 +402,7 @@ function setupFooter() {
 async function start() {
   applyStatic();
   renderLangSwitch();
+  setupNavFit();
   setupFooter();
   app.append(spinner());
   try {

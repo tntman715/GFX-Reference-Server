@@ -5149,24 +5149,74 @@ img.has-alpha {
   }
 }
 
-/* 메뉴가 많아서 노트북 화면에서는 점 · 로고 글자를 빼고 촘촘하게 */
-@media (max-width: 1400px) {
-  .brand span {
-    display: none;
-  }
+/* 메뉴가 상단 바에 다 안 들어갈 때 (main.js 의 setupNavFit): 점 · 로고 글자를 빼고 촘촘하게 */
+.topbar.nav-tight .brand span {
+  display: none;
+}
 
-  .nav a::before {
-    display: none;
-  }
+.topbar.nav-tight .nav a::before {
+  display: none;
+}
 
-  .nav a,
-  .nav button {
-    padding: 0 8px;
-  }
+.topbar.nav-tight .nav a.active::before {
+  display: block;
+}
 
-  .nav a.active::before {
-    display: block;
-  }
+.topbar.nav-tight .nav a,
+.topbar.nav-tight .nav button {
+  padding: 0 8px;
+}
+
+/* 그래도 넘치면 뒤쪽 메뉴가 들어가는 More */
+.nav-more {
+  position: relative;
+  flex: none;
+  margin-left: -16px;
+}
+
+.nav-more[hidden],
+.nav a[hidden] {
+  display: none;
+}
+
+.nav-more > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--fast), background var(--fast);
+}
+
+.nav-more > button:hover,
+.nav-more > button.active {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.nav-more > button.active {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.nav-more .chev {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.nav-more-list {
+  min-width: 170px;
+}
+
+.nav-more-list a.active {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 /* 주황 카드(1위) 위에서도 티어 뱃지가 잘 보이게 */

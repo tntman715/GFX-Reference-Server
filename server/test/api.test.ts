@@ -227,7 +227,7 @@ describe('로그인이 필요한 API', () => {
     expect((await json(await app.request('/api/auth/me', { headers: { Authorization: `Bearer ${ok.token}` } }))).user).toBeNull();
   });
 
-  it('크롬 익스텐션은 쿠키 없이 연동 코드를 받을 수 있고, 다른 사이트는 막힘', async () => {
+  it('크롬 익스텐션은 연동 코드를 받을 수 있고, 다른 사이트는 막힘', async () => {
     const device = (origin: string, cookie?: string) =>
       app.request('http://localhost/api/auth/device', {
         method: 'POST',
@@ -238,8 +238,24 @@ describe('로그인이 필요한 API', () => {
     expect(ext.status).toBe(200);
     expect((await json(ext)).userCode).toMatch(/-/);
     expect((await device('https://evil.example')).status).toBe(403);
-    // 사이트 로그인 쿠키가 실려 있으면 익스텐션 주소라도 그대로 막음
-    expect((await device('chrome-extension://abcdefghijklmnopabcdefghijklmnop', 'gfx_token=x')).status).toBe(403);
+    // 사이트에 로그인돼 있어 쿠키가 같이 와도 연동 코드는 받을 수 있음
+    expect((await device('chrome-extension://abcdefghijklmnopabcdefghijklmnop', 'gfx_token=x')).status).toBe(200);
+  });
+
+  it('익스텐션에서 온 요청은 사이트 로그인 쿠키로 인증되지 않음', async () => {
+    const res = await json(await app.request('/api/auth/device', { method: 'POST' }));
+    await ctx.community.approveDeviceCode(res.userCode, bob);
+    const poll = await app.request('/api/auth/device/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceCode: res.deviceCode }),
+    });
+    const cookie = (poll.headers.get('set-cookie') ?? '').split(';')[0];
+    expect(cookie).toMatch(/^gfx_token=/);
+    const me = async (origin?: string) =>
+      json(await app.request('http://localhost/api/auth/me', { headers: { Cookie: cookie, ...(origin ? { Origin: origin } : {}) } }));
+    expect((await me()).user.id).toBe(bob.id);
+    expect((await me('chrome-extension://abcdefghijklmnopabcdefghijklmnop')).user).toBeNull();
   });
 
   it('기기 연동 흐름 (웹) 은 토큰 대신 쿠키를 설정', async () => {

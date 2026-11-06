@@ -391,8 +391,8 @@ export class BotRuntime implements BotBridge {
     }
     const att = i.options.getAttachment('image', true);
     if (att.contentType && !att.contentType.startsWith('image/')) throw new UserError('이미지 파일만 올릴 수 있어요.');
-    if (att.size > this.config.upload.maxBytes) {
-      throw new UserError(`파일이 너무 커요. 최대 ${Math.round(this.config.upload.maxBytes / 1024 / 1024)}MB 까지 올릴 수 있어요.`);
+    if (att.size > this.config.upload.inputMaxBytes) {
+      throw new UserError(`파일이 너무 커요. 최대 ${Math.round(this.config.upload.inputMaxBytes / 1024 / 1024)}MB 까지 올릴 수 있어요.`);
     }
     const category = i.options.getString('category', true);
     if (!isCategory(category)) throw new UserError('분류를 선택해 주세요.');
@@ -434,7 +434,11 @@ export class BotRuntime implements BotBridge {
       const score = await this.community.score(input.uploader.id);
       const rendered = await this.viewer.single(ref.id);
       await i.editReply({
-        content: `✅ **#${ref.id}** 등록 완료! **+${this.config.scoring.pointsPerUpload}점** (현재 ${score?.score ?? 0}점 · ${score?.rank ?? '-'}위)`,
+        content:
+          `✅ **#${ref.id}** 등록 완료! **+${this.config.scoring.pointsPerUpload}점** (현재 ${score?.score ?? 0}점 · ${score?.rank ?? '-'}위)` +
+          (ref.compressedFrom
+            ? `\n📦 파일이 ${Math.round(this.config.upload.maxBytes / 1024 / 1024)}MB 를 넘어서 화질을 최대한 지키며 줄였어요 (${(ref.compressedFrom / 1024 / 1024).toFixed(1)}MB → ${(ref.originalSize / 1024 / 1024).toFixed(1)}MB).`
+            : ''),
         embeds: rendered.embeds,
         components: rendered.components,
         files: rendered.files,

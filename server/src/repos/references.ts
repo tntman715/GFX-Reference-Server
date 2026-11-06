@@ -12,6 +12,8 @@ export interface NewReference {
   originalFilename: string;
   originalMime: string;
   originalSize: number;
+  /** 줄여서 보관했으면 줄이기 전 크기 */
+  compressedFrom?: number | null;
   width: number;
   height: number;
   previewKey: string;
@@ -119,6 +121,7 @@ export function mapRef(row: Row): Reference {
     originalFilename: row.original_filename,
     originalMime: row.original_mime,
     originalSize: Number(row.original_size),
+    compressedFrom: row.compressed_from == null ? null : Number(row.compressed_from),
     width: Number(row.width),
     height: Number(row.height),
     previewKey: row.preview_key,
@@ -188,9 +191,9 @@ export const refsRepo = {
       `INSERT INTO refs (category, title, map_name, creator_name, creator_id, creators, uploader_id,
         original_filename, original_mime, original_size, width, height,
         preview_key, preview_width, preview_height, preview_size,
-        palette, color_hist, color_shares, primary_color, dhash, created_at)
+        palette, color_hist, color_shares, primary_color, dhash, created_at, compressed_from)
        VALUES ($1,$2,$3,$4,$5,$22::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb,$19,$20,
-         COALESCE($21::timestamptz, now()))
+         COALESCE($21::timestamptz, now()), $23)
        RETURNING id`,
       [
         r.category,
@@ -215,6 +218,7 @@ export const refsRepo = {
         r.dhash,
         r.createdAt?.toISOString() ?? null,
         creatorColumns(r.creators).json,
+        r.compressedFrom ?? null,
       ],
     );
     return Number(rows[0].id);

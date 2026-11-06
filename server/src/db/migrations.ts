@@ -387,6 +387,14 @@ CREATE TABLE site_stats_daily (
 );
 `,
   },
+  {
+    id: 10,
+    name: 'refs_compressed_from',
+    sql: `
+-- 너무 커서 줄여서 보관한 원본이면 줄이기 전 크기 (바이트). 그대로 보관했으면 NULL
+ALTER TABLE refs ADD COLUMN compressed_from BIGINT;
+`,
+  },
 ];
 
 function sqlString(s: string): string {

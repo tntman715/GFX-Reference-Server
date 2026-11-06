@@ -97,7 +97,7 @@ describe('레퍼런스 등록', () => {
   });
 
   it('너무 큰 파일은 거절', async () => {
-    const small = await makeContext({ MAX_UPLOAD_MB: '0.001' });
+    const small = await makeContext({ MAX_UPLOAD_MB: '0.001', MAX_INPUT_MB: '0.001' });
     await expect(
       small.refs.create({ file: file(await makeImage('#000', '#fff', { w: 800, h: 800, shape: 'stripes' })), category: 'non_gm', uploader: alice }),
     ).rejects.toThrow(/너무 큽니다/);

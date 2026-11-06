@@ -20,7 +20,10 @@ export function openUploadForm({ navigate } = {}) {
   }
 
   const categories = store.meta?.categories ?? [];
-  const maxBytes = store.meta?.upload?.maxBytes ?? 10 * 1024 * 1024;
+  // 받을 수 있는 크기와, 이걸 넘으면 줄여서 보관하는 크기
+  const maxBytes = store.meta?.upload?.inputMaxBytes ?? store.meta?.upload?.maxBytes ?? 10 * 1024 * 1024;
+  const keepBytes = store.meta?.upload?.maxBytes ?? 10 * 1024 * 1024;
+  const mbOf = (n) => Math.round(n / 1024 / 1024);
   let file = null;
   let previewUrl = null;
   let category = categories[0]?.key ?? 'gm_thumbnail';
@@ -38,16 +41,21 @@ export function openUploadForm({ navigate } = {}) {
           dropInner.append(
             h('img', { src: previewUrl, alt: '' }),
             h('span.drop-name', `${file.name} · ${fmtBytes(file.size)}`),
+            file.size > keepBytes ? h('span.hint.drop-shrink', t('upload.willShrink', { mb: mbOf(keepBytes) })) : null,
             h('span.hint', t('upload.change')),
           );
         } else {
-          dropInner.append(h('b', t('upload.pick')), h('span.hint', t('upload.limit', { mb: Math.round(maxBytes / 1024 / 1024) })));
+          dropInner.append(
+            h('b', t('upload.pick')),
+            h('span.hint', t('upload.limit', { mb: mbOf(maxBytes) })),
+            maxBytes > keepBytes ? h('span.hint', t('upload.shrinkNote', { mb: mbOf(keepBytes) })) : null,
+          );
         }
       };
       const setFile = (f) => {
         if (!f) return;
         if (!f.type.startsWith('image/')) return toast(t('upload.notImage'), 'error');
-        if (f.size > maxBytes) return toast(t('upload.tooBig', { mb: Math.round(maxBytes / 1024 / 1024) }), 'error');
+        if (f.size > maxBytes) return toast(t('upload.tooBig', { mb: mbOf(maxBytes) }), 'error');
         file = f;
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         previewUrl = URL.createObjectURL(f);
@@ -148,10 +156,11 @@ export function openUploadForm({ navigate } = {}) {
         form.append('tags', [...tags].join(','));
         if (allowDuplicate) form.append('allowDuplicate', '1');
         submit.disabled = true;
-        submit.textContent = t('upload.sending');
+        submit.textContent = file.size > keepBytes ? t('upload.shrinking') : t('upload.sending');
         try {
           const { item } = await api.upload('/api/refs', form);
           toast(t('upload.done', { id: item.id }), 'ok');
+          if (item.compressedFrom) toast(t('upload.shrunk', { from: fmtBytes(item.compressedFrom), to: fmtBytes(item.originalSize) }), 'ok');
           close();
           store.refreshMeta().catch(() => undefined);
           navigate?.(`#/ref/${item.id}`);

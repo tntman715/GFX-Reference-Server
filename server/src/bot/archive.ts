@@ -112,7 +112,13 @@ export class DiscordArchive implements OriginalArchive {
       { name: '태그', value: tagLine(ref.tags).slice(0, 1024), inline: false },
       { name: '팔레트', value: paletteLine(ref) || '—', inline: false },
       { name: '올린 사람', value: `<@${ref.uploaderId}>`, inline: true },
-      { name: '크기', value: `${ref.width}×${ref.height} · ${(ref.originalSize / 1024 / 1024).toFixed(2)}MB`, inline: true },
+      {
+        name: '크기',
+        value: `${ref.width}×${ref.height} · ${(ref.originalSize / 1024 / 1024).toFixed(2)}MB${
+          ref.compressedFrom ? ` (원래 ${(ref.compressedFrom / 1024 / 1024).toFixed(1)}MB, 용량 때문에 압축)` : ''
+        }`,
+        inline: true,
+      },
     ];
     return new EmbedBuilder()
       .setTitle(`#${ref.id} · ${ref.title}`.slice(0, 256))

@@ -93,6 +93,8 @@ const EnvSchema = z.object({
   // ── 업로드 / 이미지 ─────────────────────────────────────
   /** 봇이 아카이브 채널에 다시 올려야 하므로 서버 부스트 등급의 첨부 한도 이하로 (기본 10MB, 부스트 2레벨 50MB, 3레벨 100MB) */
   MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
+  /** 이보다 작으면 받아서, MAX_UPLOAD_MB 를 넘으면 화질을 최대한 지키며 줄여서 보관 */
+  MAX_INPUT_MB: z.coerce.number().positive().default(50),
   PREVIEW_MAX_SIZE: z.coerce.number().int().positive().default(720),
   PREVIEW_QUALITY: z.coerce.number().int().min(30).max(100).default(72),
   /** 상세 보기용 고화질 미리보기 (긴 변 px · WebP 품질) */
@@ -168,6 +170,8 @@ export interface Config {
   lowMemory: boolean;
   upload: {
     maxBytes: number;
+    /** 받을 수 있는 가장 큰 파일 (maxBytes 보다 크면 줄여서 보관) */
+    inputMaxBytes: number;
     previewMaxSize: number;
     previewQuality: number;
     hqMaxSize: number;
@@ -312,6 +316,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     lowMemory: e.LOW_MEMORY,
     upload: {
       maxBytes: Math.round(e.MAX_UPLOAD_MB * 1024 * 1024),
+      inputMaxBytes: Math.round(Math.max(e.MAX_INPUT_MB, e.MAX_UPLOAD_MB) * 1024 * 1024),
       previewMaxSize: e.PREVIEW_MAX_SIZE,
       previewQuality: e.PREVIEW_QUALITY,
       hqMaxSize: e.HQ_PREVIEW_MAX_SIZE,

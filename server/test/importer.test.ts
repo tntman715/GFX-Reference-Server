@@ -320,7 +320,7 @@ describe('사이트에서 올리기', () => {
     expect((await upload(carol, { category: 'non_gm' }, images.a1)).status).toBe(403);
     expect(((await (await upload(bob, { category: 'gm_thumbnail' }, images.a1)).json()) as any).code).toBe('map_required');
     expect((await upload(bob, { category: 'non_gm' })).status).toBe(400);
-    const big = Buffer.alloc(ctx.config.upload.maxBytes + 1024 * 1024);
+    const big = Buffer.alloc(ctx.config.upload.inputMaxBytes + 1024 * 1024);
     expect((await upload(bob, { category: 'non_gm' }, big)).status).toBe(413);
   });
 });

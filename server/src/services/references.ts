@@ -4,9 +4,11 @@ import type { OriginalArchive, OriginalFile } from '../archive/types.js';
 import { type Config, normalizeEmoji } from '../config.js';
 import {
   CATEGORIES,
+  EXT_BY_FORMAT,
   type Category,
   type ColorFamily,
   isCategory,
+  MIME_BY_FORMAT,
   normalizeTagName,
   type PopularPeriod,
   periodSince,
@@ -24,7 +26,7 @@ import { ForbiddenError, NotFoundError, UserError } from '../util/errors.js';
 import { logger } from '../util/log.js';
 import { auditRepo } from '../repos/audit.js';
 import { colorSimilarity, hexMatchScore, hexToLab, type PaletteColor } from './color.js';
-import { hammingDistance, makeHqPreview, processImage } from './image.js';
+import { hammingDistance, makeHqPreview, processImage, shrinkToFit } from './image.js';
 
 const log = logger('refs');
 
@@ -202,8 +204,8 @@ export class ReferenceService {
     const cat = CATEGORIES[input.category];
     const { file } = input;
     if (!file.buffer?.length) throw new UserError('빈 파일입니다.');
-    if (file.buffer.length > this.config.upload.maxBytes) {
-      throw new UserError(`파일이 너무 큽니다. 최대 ${Math.round(this.config.upload.maxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`);
+    if (file.buffer.length > this.config.upload.inputMaxBytes) {
+      throw new UserError(`파일이 너무 큽니다. 최대 ${Math.round(this.config.upload.inputMaxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`, { code: 'too_large' });
     }
 
     const mapName = cat.hasMapName ? clean(input.mapName, LIMITS.mapName) : null;
@@ -222,6 +224,17 @@ export class ReferenceService {
     if (!opts.allowDuplicate && this.config.upload.duplicateThreshold > 0) {
       const dupes = await this.findDuplicates(img.dhash);
       if (dupes.length) throw new DuplicateError(dupes);
+    }
+
+    // 디스코드 첨부 한도보다 크면 화질을 최대한 지키며 줄인 파일을 보관 (미리보기는 위에서 원본으로 만듦)
+    const stored = await shrinkToFit(file.buffer, this.config.upload.maxBytes);
+    const storedMime = stored.compression ? (MIME_BY_FORMAT[stored.format] ?? img.mime) : img.mime;
+    const storedExt = stored.compression ? (EXT_BY_FORMAT[stored.format] ?? img.ext) : img.ext;
+    if (stored.compression) {
+      const c = stored.compression;
+      log.info(
+        `큰 원본 줄임: ${(c.fromBytes / 1024 / 1024).toFixed(1)}MB → ${(stored.buffer.length / 1024 / 1024).toFixed(1)}MB (${c.method}${c.quality ? ` q${c.quality}` : ''}${c.scale ? ` ×${c.scale}` : ''}, ${stored.format})`,
+      );
     }
 
     const now = new Date();
@@ -247,11 +260,12 @@ export class ReferenceService {
           mapName,
           creators,
           uploaderId: input.uploader.id,
-          originalFilename: path.basename(file.filename),
-          originalMime: img.mime,
-          originalSize: file.buffer.length,
-          width: img.width,
-          height: img.height,
+          originalFilename: stored.compression ? `${path.basename(file.filename).replace(/\.[^.]+$/, '')}.${storedExt}` : path.basename(file.filename),
+          originalMime: storedMime,
+          originalSize: stored.buffer.length,
+          compressedFrom: stored.compression?.fromBytes ?? null,
+          width: stored.compression ? stored.width : img.width,
+          height: stored.compression ? stored.height : img.height,
           previewKey,
           previewWidth: img.preview.width,
           previewHeight: img.preview.height,
@@ -279,9 +293,9 @@ export class ReferenceService {
     const ref = (await refsRepo.get(this.db, id))!;
     try {
       const archived = await this.archive.store(ref, {
-        buffer: file.buffer,
-        filename: `ref-${id}.${img.ext}`,
-        contentType: img.mime,
+        buffer: stored.buffer,
+        filename: `ref-${id}.${storedExt}`,
+        contentType: storedMime,
       });
       await refsRepo.setArchive(this.db, id, archived.channelId, archived.messageId);
     } catch (err) {
@@ -641,6 +655,7 @@ export class ReferenceService {
       height: ref.height,
       originalSize: ref.originalSize,
       originalMime: ref.originalMime,
+      compressedFrom: ref.compressedFrom,
       preview: { url: this.previewUrl(ref), width: ref.previewWidth, height: ref.previewHeight },
       hq: ref.hqKey ? { url: this.previewUrl({ previewKey: ref.hqKey }), width: ref.hqWidth ?? ref.width, height: ref.hqHeight ?? ref.height } : null,
       thumbUrl: `${this.config.publicBaseUrl}/api/refs/${ref.id}/thumb`,

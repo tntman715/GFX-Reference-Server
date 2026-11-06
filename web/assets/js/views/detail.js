@@ -266,7 +266,10 @@ export function openDetail(id, { onClose, navigate }) {
       ),
     );
     row('Uploaded', fmtDate(ref.createdAt));
-    row('Original', `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}`);
+    row(
+      'Original',
+      `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}` + (ref.compressedFrom ? ` ${t('detail.shrunk', { from: fmtBytes(ref.compressedFrom) })}` : ''),
+    );
 
     // 처음엔 가벼운 미리보기를 보여 주고, 고화질본을 다 받으면 바꿔 끼움
     const mediaImg = h('img', { src: ref.preview.url, alt: ref.title, width: ref.preview.width, height: ref.preview.height });

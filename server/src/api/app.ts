@@ -172,7 +172,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
       sorts: SORTS,
       periods: Object.entries(POPULAR_PERIODS).map(([key, v]) => ({ key, label: v.label })),
       scoring: config.scoring,
-      upload: { maxBytes: config.upload.maxBytes, resourceMaxBytes: config.upload.resourceMaxBytes },
+      upload: { maxBytes: config.upload.maxBytes, inputMaxBytes: config.upload.inputMaxBytes, resourceMaxBytes: config.upload.resourceMaxBytes },
       tiers: TIERS,
       resourceKinds: RESOURCE_KIND_KEYS.map((key) => ({ key, ...RESOURCE_KINDS[key], points: config.scoring.pointsPerResource[key] })),
       reportReasons: Object.entries(REPORT_REASONS).map(([key, label]) => ({ key, label })),
@@ -573,9 +573,9 @@ export function createApi(ctx: AppContext): Hono<Env> {
   app.post(
     '/api/refs',
     bodyLimit({
-      maxSize: config.upload.maxBytes + 512 * 1024,
+      maxSize: config.upload.inputMaxBytes + 512 * 1024,
       onError: (c) =>
-        c.json({ error: `파일이 너무 큽니다. 최대 ${Math.round(config.upload.maxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`, code: 'too_large' }, 413),
+        c.json({ error: `파일이 너무 큽니다. 최대 ${Math.round(config.upload.inputMaxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`, code: 'too_large' }, 413),
     }),
     async (c) => {
       const user = await requireMember(c);

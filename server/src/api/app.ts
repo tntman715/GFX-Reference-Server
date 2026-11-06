@@ -599,6 +599,7 @@ export function createApi(ctx: AppContext): Hono<Env> {
               .map((s) => s.trim())
               .filter(Boolean),
             uploader: user,
+            sourceUrl: text('sourceUrl'),
           },
           { allowDuplicate: text('allowDuplicate') === '1' },
         );

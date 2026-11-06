@@ -177,13 +177,14 @@
       opts = opts || {};
       var headers = {};
       if (state.token) headers.Authorization = 'Bearer ' + state.token;
-      if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+      if (opts.body !== undefined && !opts.form) headers['Content-Type'] = 'application/json';
       var res;
       try {
         res = await doFetch(state.server + path, {
           method: opts.method || 'GET',
           headers: headers,
-          body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+          // form: FormData 를 그대로 보냄 (파일 올리기)
+          body: opts.form ? opts.form : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         });
       } catch (e) {
         throw ApiError('서버에 연결할 수 없어요. 인터넷 연결이나 서버 주소를 확인해 주세요.', 0, 'network');
@@ -196,7 +197,11 @@
       } catch (e) {
         /* 본문 없음 */
       }
-      if (!res.ok) throw ApiError((data && data.error) || '요청 실패 (' + res.status + ')', res.status, data && data.code);
+      if (!res.ok) {
+        var err = ApiError((data && data.error) || '요청 실패 (' + res.status + ')', res.status, data && data.code);
+        if (data && data.matches) err.matches = data.matches; // 비슷한 레퍼런스가 이미 있을 때
+        throw err;
+      }
       return data;
     }
 
@@ -281,6 +286,30 @@
         var m = /filename\*=UTF-8''([^;]+)/i.exec(disp) || /filename="?([^";]+)"?/i.exec(disp);
         var filename = m ? decodeURIComponent(m[1]) : 'gfx-ref-' + id;
         return { data: await res.arrayBuffer(), mime: mime, filename: filename };
+      },
+
+      /**
+       * 레퍼런스 올리기 (디스코드 연동 필요). 돌려주는 값: 등록된 레퍼런스
+       *   input: { file: Blob, filename, category, title, mapName, creators: 'A, B',
+       *            tags: ['glow'] 또는 'glow,3d', sourceUrl, allowDuplicate }
+       * 비슷한 사진이 이미 있으면 code 'duplicate' 오류이고 err.matches 에 [{ id, title, thumbUrl }] 이 들어 있어요.
+       */
+      upload: async function (input) {
+        if (!state.token) throw ApiError('올리려면 디스코드 연동이 필요해요.', 401, 'link_required');
+        if (typeof FormData !== 'function') throw ApiError('이 환경에서는 파일을 올릴 수 없어요.', 0, 'unsupported');
+        var form = new FormData();
+        form.append('file', input.file, input.filename || 'image.png');
+        form.append('category', input.category || '');
+        var put = function (k, v) {
+          if (v !== undefined && v !== null && v !== '') form.append(k, String(v));
+        };
+        put('title', input.title);
+        put('mapName', input.mapName);
+        put('creators', input.creators);
+        put('tags', Array.isArray(input.tags) ? input.tags.join(',') : input.tags);
+        put('sourceUrl', input.sourceUrl);
+        if (input.allowDuplicate) form.append('allowDuplicate', '1');
+        return (await request('/api/refs', { method: 'POST', form: form, body: null })).item;
       },
 
       /** 반응 켜고 끄기. 돌려주는 값: { reactions, myReactions } */

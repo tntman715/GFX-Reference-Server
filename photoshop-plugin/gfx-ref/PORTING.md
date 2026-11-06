@@ -65,6 +65,7 @@ const link = client.link({ onCode: (c) => showCode(c.userCode, c.command) });
 await link.done;
 
 const file = await client.downloadOriginal(items[0].id); // { data: ArrayBuffer, mime, filename }
+// 올리기: await client.upload({ file: blob, filename, category: 'non_gm', tags: ['glow'], sourceUrl }) → 레퍼런스
 await host.placeAsLayer(file, { name: require('./gfx-ref/panel.js').layerName(items[0]) }); // '#번호 제목 (제작자)'
 await host.setForegroundColor(items[0].palette[0].hex);
 ```

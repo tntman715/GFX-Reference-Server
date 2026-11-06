@@ -14,6 +14,8 @@ export interface NewReference {
   originalSize: number;
   /** 줄여서 보관했으면 줄이기 전 크기 */
   compressedFrom?: number | null;
+  /** 가져온 곳 (핀터레스트 핀 주소 등) */
+  sourceUrl?: string | null;
   width: number;
   height: number;
   previewKey: string;
@@ -122,6 +124,7 @@ export function mapRef(row: Row): Reference {
     originalMime: row.original_mime,
     originalSize: Number(row.original_size),
     compressedFrom: row.compressed_from == null ? null : Number(row.compressed_from),
+    sourceUrl: row.source_url ?? null,
     width: Number(row.width),
     height: Number(row.height),
     previewKey: row.preview_key,
@@ -191,9 +194,9 @@ export const refsRepo = {
       `INSERT INTO refs (category, title, map_name, creator_name, creator_id, creators, uploader_id,
         original_filename, original_mime, original_size, width, height,
         preview_key, preview_width, preview_height, preview_size,
-        palette, color_hist, color_shares, primary_color, dhash, created_at, compressed_from)
+        palette, color_hist, color_shares, primary_color, dhash, created_at, compressed_from, source_url)
        VALUES ($1,$2,$3,$4,$5,$22::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb,$19,$20,
-         COALESCE($21::timestamptz, now()), $23)
+         COALESCE($21::timestamptz, now()), $23, $24)
        RETURNING id`,
       [
         r.category,
@@ -219,6 +222,7 @@ export const refsRepo = {
         r.createdAt?.toISOString() ?? null,
         creatorColumns(r.creators).json,
         r.compressedFrom ?? null,
+        r.sourceUrl ?? null,
       ],
     );
     return Number(rows[0].id);

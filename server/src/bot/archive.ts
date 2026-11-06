@@ -119,6 +119,7 @@ export class DiscordArchive implements OriginalArchive {
         }`,
         inline: true,
       },
+      ...(ref.sourceUrl ? [{ name: '출처', value: ref.sourceUrl.slice(0, 1024), inline: false }] : []),
     ];
     return new EmbedBuilder()
       .setTitle(`#${ref.id} · ${ref.title}`.slice(0, 256))

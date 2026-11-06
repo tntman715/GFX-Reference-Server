@@ -395,6 +395,14 @@ CREATE TABLE site_stats_daily (
 ALTER TABLE refs ADD COLUMN compressed_from BIGINT;
 `,
   },
+  {
+    id: 11,
+    name: 'refs_source_url',
+    sql: `
+-- 사진을 가져온 곳 (핀터레스트 핀 주소 등). 모르면 NULL
+ALTER TABLE refs ADD COLUMN source_url TEXT;
+`,
+  },
 ];
 
 function sqlString(s: string): string {

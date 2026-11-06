@@ -1,0 +1,444 @@
+:root {
+  --bg: #f6f6f8;
+  --card: #ffffff;
+  --text: #1b1b22;
+  --dim: #6b6b78;
+  --border: #dedee6;
+  --field: #ffffff;
+  --accent: #7b5cff;
+  --accent-text: #5b3df0;
+  --ok: #1f9d55;
+  --error: #d64545;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141418;
+    --card: #1d1d23;
+    --text: #ececf1;
+    --dim: #9a9aa8;
+    --border: #33333d;
+    --field: #24242c;
+    --accent-text: #a990ff;
+    --ok: #3ccf7f;
+    --error: #ff6b7a;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error {
+  color: var(--error);
+}
+
+.grow {
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row.end {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.block {
+  width: 100%;
+  padding: 9px 12px;
+}
+
+.btn.link {
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  padding: 2px 4px;
+}
+
+input[type='text'],
+input[type='search'],
+input[type='url'],
+select {
+  font: inherit;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--text);
+}
+
+/* ── 위 ── */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.brand img {
+  width: 24px;
+  height: 24px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.account .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.notice {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--error);
+  color: var(--error);
+  background: var(--card);
+}
+
+/* ── 본문 ── */
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 16px 20px 40px;
+}
+
+.box {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel {
+  position: sticky;
+  top: 66px;
+  width: 320px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  max-height: calc(100vh - 86px);
+  overflow: auto;
+}
+
+.panel h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+@media (max-width: 760px) {
+  .layout {
+    flex-direction: column;
+    padding: 12px 16px 40px;
+  }
+  .panel {
+    position: static;
+    width: 100%;
+    max-height: none;
+  }
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.tabs button {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.tabs button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  background: var(--card);
+}
+
+.card.selected {
+  border-color: var(--accent);
+}
+
+.card .thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #0d0d10;
+  cursor: pointer;
+}
+
+.card .pick {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.card .body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card .body input {
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.card .meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.card .meta a {
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card .warn {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.card .done {
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.card .done a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--dim);
+  white-space: pre-line;
+}
+
+/* ── 올리기 ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 200px;
+  overflow: auto;
+  padding-top: 4px;
+}
+
+.chips button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chips button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.log {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.log li {
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+
+.log .ok {
+  color: var(--ok);
+}
+
+.log .bad {
+  color: var(--error);
+}
+
+.log a {
+  color: var(--accent-text);
+}
+
+/* ── 창 ── */
+dialog {
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 20px;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.code {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 14px;
+  margin: 12px 0;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+dialog code {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}

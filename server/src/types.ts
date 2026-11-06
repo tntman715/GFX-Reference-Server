@@ -35,6 +35,8 @@ export interface Reference {
   originalSize: number;
   /** 너무 커서 줄여서 보관했으면 줄이기 전 크기 (바이트) */
   compressedFrom: number | null;
+  /** 가져온 곳 (핀터레스트 핀 주소 등) */
+  sourceUrl: string | null;
   width: number;
   height: number;
   previewKey: string;
@@ -80,6 +82,7 @@ export interface PublicReference {
   originalMime: string;
   /** 줄여서 보관했으면 줄이기 전 크기 (바이트) */
   compressedFrom: number | null;
+  sourceUrl: string | null;
   preview: { url: string; width: number; height: number };
   /** 상세 보기용 고화질 미리보기 (아직 없으면 null) */
   hq: { url: string; width: number; height: number } | null;

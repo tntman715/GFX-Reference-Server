@@ -104,6 +104,23 @@ export interface CreateReferenceInput {
   uploader: UserInfo;
   /** 예전에 올린 것을 옮겨올 때 원래 올린 시각 */
   createdAt?: Date | null;
+  /** 가져온 곳 (핀터레스트 핀 주소 등, http/https 만) */
+  sourceUrl?: string | null;
+}
+
+/** 출처 주소: http(s) 주소만, 비우면 null */
+export function cleanSourceUrl(raw: string | null | undefined): string | null {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  let url: URL;
+  try {
+    url = new URL(s);
+  } catch {
+    throw new UserError('출처 주소가 올바르지 않습니다.', { code: 'bad_source' });
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new UserError('출처 주소는 http:// 또는 https:// 로 시작해야 합니다.', { code: 'bad_source' });
+  if (url.href.length > 500) throw new UserError('출처 주소가 너무 깁니다.', { code: 'bad_source' });
+  return url.href;
 }
 
 export interface UpdateReferenceInput {
@@ -208,6 +225,7 @@ export class ReferenceService {
       throw new UserError(`파일이 너무 큽니다. 최대 ${Math.round(this.config.upload.inputMaxBytes / 1024 / 1024)}MB 까지 올릴 수 있습니다.`, { code: 'too_large' });
     }
 
+    const sourceUrl = cleanSourceUrl(input.sourceUrl);
     const mapName = cat.hasMapName ? clean(input.mapName, LIMITS.mapName) : null;
     if (cat.requiresMapName && !mapName) throw new UserError(`${cat.label} 는 맵 이름이 필요합니다.`, { code: 'map_required' });
     const creators = creatorsFromInput(input) ?? [
@@ -264,6 +282,7 @@ export class ReferenceService {
           originalMime: storedMime,
           originalSize: stored.buffer.length,
           compressedFrom: stored.compression?.fromBytes ?? null,
+          sourceUrl,
           width: stored.compression ? stored.width : img.width,
           height: stored.compression ? stored.height : img.height,
           previewKey,
@@ -656,6 +675,7 @@ export class ReferenceService {
       originalSize: ref.originalSize,
       originalMime: ref.originalMime,
       compressedFrom: ref.compressedFrom,
+      sourceUrl: ref.sourceUrl,
       preview: { url: this.previewUrl(ref), width: ref.previewWidth, height: ref.previewHeight },
       hq: ref.hqKey ? { url: this.previewUrl({ previewKey: ref.hqKey }), width: ref.hqWidth ?? ref.width, height: ref.hqHeight ?? ref.height } : null,
       thumbUrl: `${this.config.publicBaseUrl}/api/refs/${ref.id}/thumb`,

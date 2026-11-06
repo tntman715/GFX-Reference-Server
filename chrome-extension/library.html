@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GFX 보관함</title>
+    <link rel="icon" href="icons/icon32.png" />
+    <link rel="stylesheet" href="library.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand"><img src="icons/icon32.png" alt="" /> <span data-t="title">GFX 보관함</span></div>
+      <div class="account" id="account"></div>
+    </header>
+
+    <div class="notice hidden" id="notice"></div>
+
+    <main class="layout">
+      <section class="box">
+        <div class="tabs" id="tabs">
+          <button type="button" data-tab="pending" class="on"></button>
+          <button type="button" data-tab="uploaded"></button>
+        </div>
+        <div class="toolbar">
+          <label class="check"><input type="checkbox" id="selectAll" /> <span data-t="selectAll"></span></label>
+          <span class="dim" id="selCount"></span>
+          <span class="grow"></span>
+          <button type="button" class="btn" id="deleteSel" disabled data-t="delete"></button>
+        </div>
+        <div class="grid" id="grid"></div>
+        <p class="empty hidden" id="empty"></p>
+      </section>
+
+      <aside class="panel" id="panel">
+        <h2 data-t="uploadTitle"></h2>
+        <label class="field">
+          <span data-t="category"></span>
+          <select id="category"></select>
+        </label>
+        <label class="field hidden" id="mapField">
+          <span data-t="mapName"></span>
+          <input id="mapName" type="text" maxlength="100" />
+        </label>
+        <label class="field">
+          <span data-t="creators"></span>
+          <input id="creators" type="text" maxlength="200" />
+          <small class="dim" data-t="creatorsHint"></small>
+        </label>
+        <div class="field">
+          <span data-t="tags"></span>
+          <input id="tagFilter" type="search" />
+          <div class="chips" id="tags"></div>
+        </div>
+        <button type="button" class="btn primary block" id="uploadBtn" disabled></button>
+        <p class="dim small" data-t="uploadHint"></p>
+        <ol class="log" id="log"></ol>
+      </aside>
+    </main>
+
+    <dialog id="linkDialog">
+      <h2 data-t="linkTitle"></h2>
+      <p data-t="linkHow"></p>
+      <div class="code" id="linkCode">····-····</div>
+      <div class="row">
+        <code id="linkCommand"></code>
+        <button type="button" class="btn" id="copyCommand" data-t="copy"></button>
+      </div>
+      <p class="dim small" data-t="linkWait"></p>
+      <div class="row end"><button type="button" class="btn" id="linkCancel" data-t="cancel"></button></div>
+    </dialog>
+
+    <dialog id="serverDialog">
+      <h2 data-t="serverTitle"></h2>
+      <input id="serverInput" type="url" />
+      <p class="dim small" data-t="serverHint"></p>
+      <p class="error small" id="serverError"></p>
+      <div class="row end">
+        <button type="button" class="btn" id="serverCancel" data-t="cancel"></button>
+        <button type="button" class="btn primary" id="serverSave" data-t="save"></button>
+      </div>
+    </dialog>
+
+    <script src="lib/core.js"></script>
+    <script type="module" src="library.js"></script>
+  </body>
+</html>

@@ -270,6 +270,15 @@ export function openDetail(id, { onClose, navigate }) {
       'Original',
       `${ref.width}×${ref.height} · ${fmtBytes(ref.originalSize)}` + (ref.compressedFrom ? ` ${t('detail.shrunk', { from: fmtBytes(ref.compressedFrom) })}` : ''),
     );
+    if (ref.sourceUrl && /^https?:\/\//i.test(ref.sourceUrl)) {
+      let host = ref.sourceUrl;
+      try {
+        host = new URL(ref.sourceUrl).hostname.replace(/^www\./, '');
+      } catch {
+        /* 주소 그대로 표시 */
+      }
+      row('Source', h('a', { href: ref.sourceUrl, target: '_blank', rel: 'noopener noreferrer nofollow' }, host));
+    }
 
     // 처음엔 가벼운 미리보기를 보여 주고, 고화질본을 다 받으면 바꿔 끼움
     const mediaImg = h('img', { src: ref.preview.url, alt: ref.title, width: ref.preview.width, height: ref.preview.height });

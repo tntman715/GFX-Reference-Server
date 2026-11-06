@@ -1,0 +1,7 @@
+/* 이 플러그인 단독 실행용 바탕 스타일. 다른 플러그인에 넣을 때는 필요 없어요. */
+body {
+  margin: 0;
+  padding: 10px;
+  background-color: var(--uxp-host-background-color, #323232);
+  font-family: var(--uxp-host-font-family, sans-serif);
+}

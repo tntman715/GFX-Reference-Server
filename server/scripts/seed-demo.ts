@@ -49,6 +49,8 @@ const maps = ['Bloodbath', 'Sonic Wave', 'Tartarus', 'Acheron', 'Slaughterhouse'
 const titles = ['Neon Dreams', 'Crimson Poster', 'Chrome Type', 'Soft Gradient', 'Liquid Metal', 'Paint Study', 'Grunge Collage', 'Orbit', 'Night Drive', 'Glass Render', 'Retro Flyer', 'Monochrome'];
 const creators = ['Riot', 'Zylenox', 'Doggie', 'Trick', 'Cyclic', 'Nova', '카이로', '민트', 'Vex', 'Luma', 'Sunix', 'Knobbelboy'];
 const tags = ['glow', 'grunge', '3d', 'blender/c4d', 'modern', 'central-texted-composition', 'non-central-texted-composition', 'multi-colored', 'poster-like', 'paint', 'complex'];
+// 비지메는 태그가 따로라서 데모용으로 같은 이름을 비지메에도 만들어 둠
+for (const t of tags) await ctx.community.addTag(t, null, { id: users[0].id, isAdmin: true }, 'nongd').catch(() => undefined);
 
 function svg(kind: number, [bg, main, light]: string[], text: string, w: number, h: number): string {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;');

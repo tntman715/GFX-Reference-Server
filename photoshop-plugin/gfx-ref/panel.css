@@ -1,127 +1,136 @@
-/* UXP 는 CSS grid 와 일부 속성을 지원하지 않아 flex + margin 위주로 작성했습니다. */
-* {
+/* GFX References 패널 — 모든 규칙이 .gfxr 안에서만 적용돼요 (다른 플러그인 화면에 영향 없음).
+ * UXP 는 CSS grid 와 일부 속성을 지원하지 않아 flex + margin 위주로 작성했습니다.
+ * 색은 아래 변수만 바꾸면 됩니다. */
+.gfxr {
+  --gfxr-accent: #7b5cff;
+  --gfxr-accent-text: #a990ff;
+  --gfxr-text: var(--uxp-host-text-color, #e6e6e6);
+  --gfxr-dim: var(--uxp-host-text-color-secondary, #a0a0a0);
+  --gfxr-border: var(--uxp-host-border-color, #4a4a4a);
+  --gfxr-field: var(--uxp-host-widget-hover-background-color, #262626);
+  --gfxr-button: var(--uxp-host-widget-hover-background-color, #3d3d3d);
+  --gfxr-error: #ff6b7a;
+
+  position: relative;
+  font-size: 12px;
+  color: var(--gfxr-text);
+}
+
+.gfxr * {
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-  padding: 10px;
-  font-size: 12px;
-  color: var(--uxp-host-text-color, #e6e6e6);
-  background-color: var(--uxp-host-background-color, #323232);
-  font-family: var(--uxp-host-font-family, sans-serif);
-}
-
-.hidden {
+.gfxr-hidden {
   display: none !important;
 }
 
-.dim {
-  color: var(--uxp-host-text-color-secondary, #a0a0a0);
+.gfxr-dim {
+  color: var(--gfxr-dim);
 }
 
-.small {
+.gfxr-small {
   font-size: 11px;
 }
 
-.error {
-  color: #ff6b7a;
+.gfxr-error {
+  color: var(--gfxr-error);
 }
 
-h2 {
+.gfxr-h2 {
   font-size: 15px;
   margin: 0 0 6px 0;
 }
 
-h3 {
+.gfxr-h3 {
   font-size: 14px;
   margin: 8px 0 2px 0;
 }
 
-p {
+.gfxr p {
   margin: 4px 0 8px 0;
 }
 
-input,
-select {
+.gfxr-input,
+.gfxr-select {
   width: 100%;
   height: 26px;
   font-size: 12px;
   border-radius: 4px;
-  border: 1px solid var(--uxp-host-border-color, #555);
-  background-color: var(--uxp-host-widget-hover-background-color, #262626);
-  color: var(--uxp-host-text-color, #e6e6e6);
+  border: 1px solid var(--gfxr-border);
+  background-color: var(--gfxr-field);
+  color: var(--gfxr-text);
   padding: 0 6px;
   margin-bottom: 6px;
 }
 
-button {
+.gfxr-btn {
   height: 26px;
   padding: 0 10px;
   font-size: 12px;
   border-radius: 4px;
-  border: 1px solid var(--uxp-host-border-color, #555);
-  background-color: var(--uxp-host-widget-hover-background-color, #3d3d3d);
-  color: var(--uxp-host-text-color, #e6e6e6);
+  border: 1px solid var(--gfxr-border);
+  background-color: var(--gfxr-button);
+  color: var(--gfxr-text);
   cursor: pointer;
 }
 
-button.primary {
-  background-color: #7b5cff;
-  border-color: #7b5cff;
+.gfxr-btn.gfxr-primary {
+  background-color: var(--gfxr-accent);
+  border-color: var(--gfxr-accent);
   color: #fff;
 }
 
-button.link {
+.gfxr-btn.gfxr-link {
   border: none;
   background-color: transparent;
   padding: 0 4px;
-  color: #a990ff;
+  color: var(--gfxr-accent-text);
 }
 
-button.icon {
+.gfxr-btn.gfxr-icon {
   width: 26px;
   padding: 0;
 }
 
-button.block {
+.gfxr-btn.gfxr-block {
   width: 100%;
 }
 
-button:disabled {
+.gfxr-btn:disabled {
   opacity: 0.5;
 }
 
-.row {
+.gfxr-row {
   display: flex;
   flex-direction: row;
   align-items: center;
 }
 
-.row > * + * {
+.gfxr-row > * + * {
   margin-left: 6px;
 }
 
-.row.end {
+.gfxr-row > .gfxr-select,
+.gfxr-grow {
+  flex: 1;
+}
+
+.gfxr-end {
   justify-content: flex-end;
 }
 
-.row.center {
+.gfxr-center {
   justify-content: center;
   margin-top: 8px;
 }
 
-.half {
-  flex: 1;
-}
-
-.card {
+.gfxr-card {
   padding: 12px;
   border-radius: 6px;
-  border: 1px solid var(--uxp-host-border-color, #4a4a4a);
+  border: 1px solid var(--gfxr-border);
 }
 
-.bar {
+.gfxr-bar {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -129,61 +138,49 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-.account {
+.gfxr-account {
   display: flex;
   flex-direction: row;
   align-items: center;
   overflow: hidden;
 }
 
-.account img {
+.gfxr-account img {
   width: 20px;
   height: 20px;
   border-radius: 10px;
   margin-right: 6px;
 }
 
-.search .row select {
-  flex: 1;
-}
-
-.meta-line {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  margin: 2px 0 6px 0;
-}
-
-.results {
+.gfxr-results {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   justify-content: space-between;
 }
 
-.thumb {
+.gfxr-thumb {
   width: 48.5%;
   margin-bottom: 8px;
   border-radius: 5px;
   overflow: hidden;
-  border: 1px solid var(--uxp-host-border-color, #4a4a4a);
+  border: 1px solid var(--gfxr-border);
   cursor: pointer;
   background-color: #1b1b1f;
 }
 
-.thumb:hover {
-  border-color: #7b5cff;
+.gfxr-thumb:hover {
+  border-color: var(--gfxr-accent);
 }
 
-.thumb img {
+.gfxr-thumb img {
   width: 100%;
   height: 90px;
   object-fit: cover;
   display: block;
 }
 
-.thumb .t {
+.gfxr-thumb-title {
   padding: 4px 6px;
   font-size: 11px;
   white-space: nowrap;
@@ -191,16 +188,16 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-.thumb .s {
+.gfxr-thumb-sub {
   padding: 0 6px 5px 6px;
   font-size: 10px;
-  color: var(--uxp-host-text-color-secondary, #a0a0a0);
+  color: var(--gfxr-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.detail-img {
+.gfxr-detail-img {
   border-radius: 6px;
   overflow: hidden;
   background-color: #111;
@@ -209,39 +206,39 @@ button:disabled {
   justify-content: center;
 }
 
-.detail-img img {
+.gfxr-detail-img img {
   display: block;
   max-width: 100%;
   max-height: 300px;
 }
 
-.tags {
+.gfxr-tags {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   margin: 6px 0;
 }
 
-.tags span {
+.gfxr-tags span {
   padding: 2px 7px;
   margin: 0 4px 4px 0;
   border-radius: 10px;
-  border: 1px solid var(--uxp-host-border-color, #555);
+  border: 1px solid var(--gfxr-border);
   font-size: 11px;
 }
 
-.label {
+.gfxr-label {
   margin-top: 8px;
   margin-bottom: 4px;
 }
 
-.palette {
+.gfxr-palette {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
 }
 
-.palette div {
+.gfxr-palette div {
   width: 28px;
   height: 28px;
   margin: 0 6px 6px 0;
@@ -250,19 +247,15 @@ button:disabled {
   cursor: pointer;
 }
 
-.actions {
+.gfxr-actions {
   margin-top: 6px;
 }
 
-.actions > * {
+.gfxr-actions > * {
   margin-bottom: 6px;
 }
 
-.actions > button {
-  width: 100%;
-}
-
-.code {
+.gfxr-code {
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 3px;
@@ -270,10 +263,10 @@ button:disabled {
   padding: 10px;
   margin: 8px 0;
   border-radius: 6px;
-  border: 1px dashed var(--uxp-host-border-color, #666);
+  border: 1px dashed var(--gfxr-border);
 }
 
-.toast {
+.gfxr-toast {
   position: fixed;
   left: 10px;
   right: 10px;
@@ -281,6 +274,6 @@ button:disabled {
   padding: 8px 10px;
   border-radius: 6px;
   background-color: #222;
-  border: 1px solid #7b5cff;
+  border: 1px solid var(--gfxr-accent);
   color: #fff;
 }

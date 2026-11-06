@@ -312,6 +312,34 @@
         return (await request('/api/refs', { method: 'POST', form: form, body: null })).item;
       },
 
+      /**
+       * 에셋 · 플러그인 · 텍스쳐팩 올리기 (디스코드 연동 필요). 돌려주는 값: 등록된 항목
+       *   input: { kind: 'asset'|'plugin'|'texturepack', file: Blob, filename, title, description,
+       *            creators: 'A, B', tags: ['png'] 또는 'png,3d', linkUrl }
+       * 파일이 사진이면 그 사진이 미리보기가 돼요.
+       */
+      uploadResource: async function (input) {
+        if (!state.token) throw ApiError('올리려면 디스코드 연동이 필요해요.', 401, 'link_required');
+        if (typeof FormData !== 'function') throw ApiError('이 환경에서는 파일을 올릴 수 없어요.', 0, 'unsupported');
+        var form = new FormData();
+        form.append('kind', input.kind || 'asset');
+        if (input.file) form.append('file', input.file, input.filename || 'file');
+        var put = function (k, v) {
+          if (v !== undefined && v !== null && v !== '') form.append(k, String(v));
+        };
+        put('title', input.title);
+        put('description', input.description);
+        put('creators', input.creators);
+        put('tags', Array.isArray(input.tags) ? input.tags.join(',') : input.tags);
+        put('linkUrl', input.linkUrl);
+        return (await request('/api/resources', { method: 'POST', form: form, body: null })).item;
+      },
+
+      /** 에셋 등 종류별 태그 목록: [{ name, description, count }] */
+      resourceTags: async function (kind) {
+        return (await request('/api/resources/tags' + qs({ kind: kind || 'asset' }))).tags;
+      },
+
       /** 반응 켜고 끄기. 돌려주는 값: { reactions, myReactions } */
       react: function (id, emoji) {
         return request('/api/refs/' + Number(id) + '/reactions', { method: 'POST', body: { emoji: emoji } });

@@ -33,7 +33,14 @@
 
       <aside class="panel" id="panel">
         <h2 data-t="uploadTitle"></h2>
-        <label class="field">
+        <div class="field">
+          <span data-t="target"></span>
+          <div class="seg" id="target">
+            <button type="button" data-target="ref" data-t="targetRef"></button>
+            <button type="button" data-target="asset" data-t="targetAsset"></button>
+          </div>
+        </div>
+        <label class="field" id="categoryField">
           <span data-t="category"></span>
           <select id="category"></select>
         </label>
@@ -52,7 +59,7 @@
           <div class="chips" id="tags"></div>
         </div>
         <button type="button" class="btn primary block" id="uploadBtn" disabled></button>
-        <p class="dim small" data-t="uploadHint"></p>
+        <p class="dim small" id="uploadHint"></p>
         <ol class="log" id="log"></ol>
       </aside>
     </main>

@@ -45,6 +45,7 @@ type AuthedUser = UserInfo & { tokenLabel: string };
 type Env = { Variables: { user: AuthedUser | null; token: string | null } };
 
 const TOKEN_COOKIE = 'gfx_token';
+const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension|safari-web-extension):\/\/[a-z0-9-]+$/i;
 const OAUTH_COOKIE = 'gfx_oauth';
 
 const MIME: Record<string, string> = {
@@ -115,7 +116,9 @@ export function createApi(ctx: AppContext): Hono<Env> {
     const method = c.req.method;
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && !c.req.header('authorization')) {
       const origin = c.req.header('origin');
-      if (origin && origin !== new URL(c.req.url).origin && !allowedOrigins.has(origin)) {
+      // 브라우저 확장(크롬 익스텐션 등)은 쿠키 없이 연동 코드 → 토큰 방식만 씀. 쿠키가 없으면 위조할 로그인도 없음
+      const extensionWithoutCookie = !!origin && EXTENSION_ORIGIN.test(origin) && !getCookie(c, TOKEN_COOKIE);
+      if (origin && origin !== new URL(c.req.url).origin && !allowedOrigins.has(origin) && !extensionWithoutCookie) {
         return c.json({ error: '허용되지 않은 출처의 요청입니다.', code: 'bad_origin' }, 403);
       }
     }

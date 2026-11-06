@@ -9,7 +9,8 @@
     ? { save: 'GFX에 담기', saving: '담는 중…', saved: '✓ 담겼어요', exists: '이미 담겨 있어요', fail: '담지 못했어요', reload: '새로고침 후 다시 시도해 주세요' }
     : { save: 'Save to GFX', saving: 'Saving…', saved: '✓ Saved', exists: 'Already saved', fail: 'Could not save', reload: 'Reload the page and try again' };
 
-  const MIN_SIZE = 120;
+  const MIN_LONG = 100;
+  const MIN_SHORT = 40;
 
   // 핀터레스트 CSS 와 섞이지 않게 Shadow DOM 안에 버튼을 만듦
   const host = document.createElement('div');
@@ -46,8 +47,9 @@
     if (!el || el.tagName !== 'IMG') return false;
     const src = el.currentSrc || el.src || '';
     if (!/^https:\/\/i\.pinimg\.com\//.test(src)) return false;
+    // 가로로 길쭉한 사진(예: 236×118)도 잡히도록 긴 쪽 · 짧은 쪽을 따로 봄 (작은 프로필 사진 등은 제외)
     const r = el.getBoundingClientRect();
-    return r.width >= MIN_SIZE && r.height >= MIN_SIZE;
+    return Math.max(r.width, r.height) >= MIN_LONG && Math.min(r.width, r.height) >= MIN_SHORT;
   }
 
   function imageAt(x, y) {

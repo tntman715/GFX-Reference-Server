@@ -273,13 +273,45 @@ select {
   border-color: var(--accent);
 }
 
+/* 사진 전체가 보이게 (가로로 긴 사진도 잘리지 않음), 투명한 부분은 체크무늬 */
 .card .thumb {
   display: block;
   width: 100%;
   aspect-ratio: 4 / 3;
-  object-fit: cover;
-  background: #0d0d10;
+  object-fit: contain;
+  background-color: #e9e9ee;
+  background-image: linear-gradient(45deg, #d2d2da 25%, transparent 25%, transparent 75%, #d2d2da 75%),
+    linear-gradient(45deg, #d2d2da 25%, transparent 25%, transparent 75%, #d2d2da 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
   cursor: pointer;
+}
+
+.seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg button {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 8px;
+  border: none;
+  background: var(--field);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: #fff;
 }
 
 .card .pick {

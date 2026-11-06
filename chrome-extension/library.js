@@ -21,6 +21,13 @@ const STRINGS = {
     uploadedAs: '올림: {ref}',
     open: '열기',
     uploadTitle: '선택한 사진 올리기',
+    target: '올릴 곳',
+    targetRef: '🖼️ 레퍼런스',
+    targetAsset: '🧩 에셋',
+    uploadedAsAsset: '에셋으로 올림: ',
+    okAsset: '에셋 #{id} 올렸어요',
+    sourceLine: '출처: {url}',
+    uploadHintAsset: '에셋은 사진 파일 그대로 올라가고, 설명에 출처(핀 주소)가 들어가요. 1분에 10장까지 올릴 수 있어요.',
     category: '분류',
     mapName: '맵 이름 (필수)',
     creators: '제작자',
@@ -72,6 +79,13 @@ const STRINGS = {
     uploadedAs: 'Uploaded: {ref}',
     open: 'Open',
     uploadTitle: 'Upload selected',
+    target: 'Upload as',
+    targetRef: '🖼️ Reference',
+    targetAsset: '🧩 Asset',
+    uploadedAsAsset: 'Uploaded as asset: ',
+    okAsset: 'Uploaded asset #{id}',
+    sourceLine: 'Source: {url}',
+    uploadHintAsset: 'Assets keep the picture file as is, with the source (pin link) in the description. Up to 10 uploads per minute.',
     category: 'Category',
     mapName: 'Map name (required)',
     creators: 'Creators',
@@ -146,7 +160,16 @@ function loadLast() {
 
 function saveLast() {
   try {
-    localStorage.setItem(LAST, JSON.stringify({ category: $('category').value, tags: [...state.tags], creators: $('creators').value }));
+    localStorage.setItem(
+      LAST,
+      JSON.stringify({
+        target: state.target,
+        category: $('category').value,
+        tags: [...state.tags.ref],
+        assetTags: [...state.tags.asset],
+        creators: $('creators').value,
+      }),
+    );
   } catch {
     /* */
   }
@@ -171,7 +194,9 @@ const state = {
   items: [],
   tab: 'pending',
   selected: new Set(),
-  tags: new Set(loadLast().tags || []),
+  target: loadLast().target === 'asset' ? 'asset' : 'ref', // 올릴 곳: 레퍼런스 / 에셋
+  tags: { ref: new Set(loadLast().tags || []), asset: new Set(loadLast().assetTags || []) },
+  assetTags: null, // 에셋 태그 목록 (서버에서 한 번 받음)
   uploading: false,
   stop: false,
   urls: new Map(), // 항목 번호 → 사진 임시 주소
@@ -259,6 +284,7 @@ $('serverSave').addEventListener('click', async () => {
   }
   try {
     await client.connect(url);
+    state.assetTags = null; // 다른 서버의 에셋 태그를 다시 받음
     $('serverDialog').close();
     hideNotice();
     renderAll();
@@ -289,12 +315,14 @@ async function connect() {
 }
 
 // ── 사진 목록 ────────────────────────────────────────────
+const isUploaded = (i) => !!(i.uploadedRef || i.uploadedRes);
+
 function visibleItems() {
-  return state.items.filter((i) => (state.tab === 'pending' ? !i.uploadedRef : !!i.uploadedRef));
+  return state.items.filter((i) => (state.tab === 'pending' ? !isUploaded(i) : isUploaded(i)));
 }
 
 function renderTabs() {
-  const pending = state.items.filter((i) => !i.uploadedRef).length;
+  const pending = state.items.filter((i) => !isUploaded(i)).length;
   const uploaded = state.items.length - pending;
   for (const b of $('tabs').querySelectorAll('button')) {
     b.textContent = b.dataset.tab === 'pending' ? t('tabPending', { n: pending }) : t('tabUploaded', { n: uploaded });
@@ -304,6 +332,10 @@ function renderTabs() {
 
 function refUrl(id) {
   return `${client.server}/#/ref/${id}`;
+}
+
+function resUrl(id) {
+  return `${client.server}/#/res/${id}`;
 }
 
 function card(item) {
@@ -346,9 +378,12 @@ function card(item) {
         item.pageUrl ? h('a', { href: item.pageUrl, target: '_blank', rel: 'noopener noreferrer' }, item.site || hostOf(item.pageUrl)) : h('span', {}, item.site || ''),
         h('span', {}, item.size ? (item.size < 1024 * 1024 ? `${Math.max(1, Math.round(item.size / 1024))}KB` : `${(item.size / 1024 / 1024).toFixed(1)}MB`) : ''),
       ),
-      !item.blob && !item.uploadedRef ? h('div', { class: 'warn' }, t('notFetched')) : null,
+      !item.blob && !isUploaded(item) ? h('div', { class: 'warn' }, t('notFetched')) : null,
       item.uploadedRef
         ? h('div', { class: 'done' }, t('uploadedAs', { ref: '' }), h('a', { href: refUrl(item.uploadedRef), target: '_blank', rel: 'noopener' }, `#${item.uploadedRef}`))
+        : null,
+      item.uploadedRes
+        ? h('div', { class: 'done' }, t('uploadedAsAsset'), h('a', { href: resUrl(item.uploadedRes), target: '_blank', rel: 'noopener' }, `#${item.uploadedRes}`))
         : null,
     ),
   );
@@ -425,18 +460,35 @@ function renderCategories() {
   else if (meta.categories.some((c) => c.key === 'non_gm')) sel.value = 'non_gm'; // 핀터레스트 사진은 대개 비지메
 }
 
+/** 지금 올릴 곳에서 쓸 수 있는 태그 이름들 (아직 모르면 null) */
+function tagNames() {
+  const meta = client.meta;
+  if (!meta) return null;
+  if (state.target === 'asset') return state.assetTags;
+  const cat = categoryInfo();
+  return cat ? meta.tags.filter((tg) => tg.group === cat.tagGroup).map((tg) => tg.name) : null;
+}
+
+async function loadAssetTags() {
+  if (state.assetTags || !client.meta) return;
+  try {
+    state.assetTags = (await client.resourceTags('asset')).map((tg) => tg.name);
+  } catch {
+    state.assetTags = [];
+  }
+  renderTags();
+}
+
 function renderTags() {
   const box = $('tags');
-  const meta = client.meta;
-  const cat = categoryInfo();
   box.replaceChildren();
-  if (!meta || !cat) return;
-  const group = cat.tagGroup;
-  const names = meta.tags.filter((tg) => tg.group === group).map((tg) => tg.name);
+  const names = tagNames();
+  if (!names) return;
+  const chosen = state.tags[state.target];
   // 다른 분류로 바꾸면 그 분류에 없는 태그는 뺌
-  for (const n of [...state.tags]) if (!names.includes(n)) state.tags.delete(n);
+  for (const n of [...chosen]) if (!names.includes(n)) chosen.delete(n);
   const q = $('tagFilter').value.trim().toLowerCase();
-  const shown = names.filter((n) => !q || n.toLowerCase().includes(q) || state.tags.has(n));
+  const shown = names.filter((n) => !q || n.toLowerCase().includes(q) || chosen.has(n));
   if (!names.length) {
     box.append(h('span', { class: 'dim small' }, t('noTags')));
     return;
@@ -447,10 +499,10 @@ function renderTags() {
         'button',
         {
           type: 'button',
-          class: state.tags.has(name) ? 'on' : '',
+          class: chosen.has(name) ? 'on' : '',
           onclick: () => {
-            if (state.tags.has(name)) state.tags.delete(name);
-            else state.tags.add(name);
+            if (chosen.has(name)) chosen.delete(name);
+            else chosen.add(name);
             saveLast();
             renderTags();
           },
@@ -463,8 +515,26 @@ function renderTags() {
 
 function renderMapField() {
   const cat = categoryInfo();
-  $('mapField').classList.toggle('hidden', !(cat && cat.hasMapName));
+  const asset = state.target === 'asset';
+  $('categoryField').classList.toggle('hidden', asset);
+  $('mapField').classList.toggle('hidden', asset || !(cat && cat.hasMapName));
 }
+
+function renderTarget() {
+  for (const b of $('target').querySelectorAll('button')) b.classList.toggle('on', b.dataset.target === state.target);
+  $('uploadHint').textContent = state.target === 'asset' ? t('uploadHintAsset') : t('uploadHint');
+  renderMapField();
+  renderTags();
+  if (state.target === 'asset') loadAssetTags();
+}
+
+$('target').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-target]');
+  if (!b || state.uploading) return;
+  state.target = b.dataset.target;
+  saveLast();
+  renderTarget();
+});
 
 function renderUploadButton() {
   const btn = $('uploadBtn');
@@ -503,10 +573,19 @@ async function ensureBlob(item) {
   return updateItem(item.id, { blob: file.blob, mime: file.mime, size: file.size, imageUrl: file.url });
 }
 
-async function uploadOne(item, opts, allowDuplicate) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await client.upload({
+function sendOne(item, opts, allowDuplicate) {
+  if (opts.target === 'asset') {
+    return client.uploadResource({
+      kind: 'asset',
+      file: item.blob,
+      filename: fileNameOf(item),
+      title: item.title || undefined,
+      creators: opts.creators || undefined,
+      tags: opts.tags,
+      description: item.pageUrl ? t('sourceLine', { url: item.pageUrl }) : undefined,
+    });
+  }
+  return client.upload({
         file: item.blob,
         filename: fileNameOf(item),
         category: opts.category,
@@ -517,6 +596,12 @@ async function uploadOne(item, opts, allowDuplicate) {
         sourceUrl: item.pageUrl || undefined,
         allowDuplicate,
       });
+}
+
+async function uploadOne(item, opts, allowDuplicate) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sendOne(item, opts, allowDuplicate);
     } catch (e) {
       if (e.status === 429 && attempt < 4) {
         const li = log('dim', t('wait'));
@@ -540,9 +625,14 @@ async function handleUpload(item, opts, allowDuplicate) {
     return 'skip';
   }
   try {
-    const ref = await uploadOne(ready, opts, allowDuplicate);
-    await updateItem(item.id, { uploadedRef: ref.id, uploadedAt: Date.now() });
-    log('ok', `${itemLabel(item)} — `, h('a', { href: refUrl(ref.id), target: '_blank', rel: 'noopener' }, t('ok', { id: ref.id })));
+    const made = await uploadOne(ready, opts, allowDuplicate);
+    if (opts.target === 'asset') {
+      await updateItem(item.id, { uploadedRes: made.id, uploadedAt: Date.now() });
+      log('ok', `${itemLabel(item)} — `, h('a', { href: resUrl(made.id), target: '_blank', rel: 'noopener' }, t('okAsset', { id: made.id })));
+    } else {
+      await updateItem(item.id, { uploadedRef: made.id, uploadedAt: Date.now() });
+      log('ok', `${itemLabel(item)} — `, h('a', { href: refUrl(made.id), target: '_blank', rel: 'noopener' }, t('ok', { id: made.id })));
+    }
     return 'ok';
   } catch (e) {
     if (e.code === 'duplicate') {
@@ -578,7 +668,7 @@ $('uploadBtn').addEventListener('click', async () => {
     state.stop = true;
     return;
   }
-  const items = state.items.filter((i) => state.selected.has(i.id) && !i.uploadedRef);
+  const items = state.items.filter((i) => state.selected.has(i.id) && !isUploaded(i));
   if (!items.length) return;
   // 권한 요청은 클릭 직후에만 가능해서 가장 먼저
   if (!(await askPermissions(items))) {
@@ -594,12 +684,14 @@ $('uploadBtn').addEventListener('click', async () => {
     log('bad', t('notMember'));
     return;
   }
-  const cat = categoryInfo();
+  const asset = state.target === 'asset';
+  const cat = asset ? null : categoryInfo();
   const opts = {
+    target: state.target,
     category: $('category').value,
     mapName: cat && cat.hasMapName ? $('mapName').value.trim() : '',
     creators: $('creators').value.trim(),
-    tags: [...state.tags],
+    tags: [...state.tags[state.target]],
   };
   if (cat && cat.requiresMapName && !opts.mapName) {
     log('bad', t('mapName'));
@@ -638,8 +730,7 @@ function applyStaticText() {
 function renderAll() {
   renderAccount();
   renderCategories();
-  renderMapField();
-  renderTags();
+  renderTarget();
   renderGrid();
 }
 

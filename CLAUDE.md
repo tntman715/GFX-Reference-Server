@@ -61,4 +61,6 @@ If GitHub rejects pushes ("fatal error in commit_refs"), it is on GitHub's side;
   Instead `chrome-extension/` (MV3) saves single pictures into a local box and uploads them with a source URL (`refs.source_url`).
   Its `lib/core.js` is a copy of `photoshop-plugin/gfx-ref/core.js`; a server test checks they match.
 - `YOUTUBE_API_KEY` is not set on the server yet, so the showcase playlist import is off until the owner adds it.
-- The owner wants an A1 (ARM, 2 OCPU / 12GB) instance eventually; it was out of capacity.
+- The owner wants an A1 (ARM, 2 OCPU / 12GB) instance (no PAYG upgrade). `ops/a1-grab/` runs on the current VM as
+  systemd timer `a1-grab.timer` (every 2 min, files in `/home/ubuntu/a1-grab`, API key in `~/.oci`) and posts to
+  `REPORT_CHANNEL_ID` when it gets one. After that: move the data and disable the timer.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Try to create an Oracle A1 instance (one attempt)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/a1-grab
+ExecStart=/usr/bin/node /home/ubuntu/a1-grab/grab.mjs
+Nice=10
+MemoryMax=120M
+TimeoutStartSec=90

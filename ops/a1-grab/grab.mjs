@@ -54,7 +54,8 @@ const cfg = {
   sshKeyFile: (env.A1_SSH_KEY_FILE || '~/.ssh/authorized_keys').replace(/^~/, home),
   stateFile: (env.A1_STATE_FILE || join(HERE, 'state.json')).replace(/^~/, home),
   discordToken: gfxEnv.DISCORD_TOKEN || env.DISCORD_TOKEN || '',
-  channelId: env.A1_NOTIFY_CHANNEL_ID || gfxEnv.REPORT_CHANNEL_ID || ''
+  channelId: env.A1_NOTIFY_CHANNEL_ID || gfxEnv.REPORT_CHANNEL_ID || '',
+  mentionRoleId: env.A1_MENTION_ROLE_ID || ''
 };
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -137,12 +138,15 @@ const q = (o) => '?' + new URLSearchParams(o).toString();
 
 // --- Discord --------------------------------------------------------------------------
 
-async function notify(text) {
+// mention: true pings A1_MENTION_ROLE_ID (only for the good news).
+async function notify(text, { mention = false } = {}) {
   if (!cfg.discordToken || !cfg.channelId) {
     log('discord not configured, message was:', text);
     return;
   }
-  const body = JSON.stringify({ content: text.slice(0, 1900), allowed_mentions: { parse: [] } });
+  const role = mention && /^\d+$/.test(cfg.mentionRoleId) ? cfg.mentionRoleId : '';
+  const content = (role ? `<@&${role}> ` : '') + text.slice(0, 1900);
+  const body = JSON.stringify({ content, allowed_mentions: { parse: [], roles: role ? [role] : [] } });
   try {
     const res = await httpsJson(
       'POST',
@@ -262,7 +266,10 @@ async function main() {
     log(`request: ${SHAPE} ${cfg.ocpus} OCPU / ${cfg.memoryGb} GB, boot ${cfg.bootGb} GB, name ${cfg.name}`);
     log('existing A1:', a1 ? `${a1.displayName} ${a1.lifecycleState}` : 'none');
     log('discord:', cfg.discordToken && cfg.channelId ? `channel ${cfg.channelId}` : 'not configured');
-    if (process.argv[3] === 'notify') await notify('🧪 A1 잡기 봇 알림 테스트입니다. (아직 서버를 잡은 것은 아닙니다)');
+    log('mention role:', cfg.mentionRoleId || 'none');
+    if (process.argv[3] === 'notify') {
+      await notify('🧪 A1 잡기 봇 알림 테스트입니다. (아직 서버를 잡은 것은 아닙니다)', { mention: true });
+    }
     return;
   }
 
@@ -279,14 +286,17 @@ async function main() {
       log('A1 is running', found.id, ip || '');
       await notify(
         `🎉 **오라클 A1 서버가 준비됐어요!**\n이름: ${found.displayName}\n공인 IP: ${ip || '(확인 중)'}\n` +
-          `잡기 봇은 이제 멈춥니다. 다음은 데이터 옮기기예요.`
+          `잡기 봇은 이제 멈춥니다. 다음은 데이터 옮기기예요.`,
+        { mention: true }
       );
       state.finished = { at: new Date().toISOString(), id: found.id, ip };
     } else {
       log('A1 exists, state', found.lifecycleState);
       if (!state.launched) {
         state.launched = { at: new Date().toISOString(), id: found.id };
-        await notify(`🎉 오라클 A1 서버 자리를 잡았어요! 지금 만드는 중이에요 (${found.lifecycleState}). 준비되면 다시 알려 드릴게요.`);
+        await notify(`🎉 오라클 A1 서버 자리를 잡았어요! 지금 만드는 중이에요 (${found.lifecycleState}). 준비되면 다시 알려 드릴게요.`, {
+          mention: true
+        });
       }
     }
     saveState(state);
@@ -313,7 +323,8 @@ async function main() {
     state.launched = { at: new Date().toISOString(), id: inst.id };
     await notify(
       `🎉 **오라클 A1 서버 자리를 잡았어요!** (${state.attempts}번째 시도)\n` +
-        `${cfg.ocpus} OCPU / ${cfg.memoryGb} GB · 지금 만드는 중이에요. 준비되면 IP 를 다시 알려 드릴게요.`
+        `${cfg.ocpus} OCPU / ${cfg.memoryGb} GB · 지금 만드는 중이에요. 준비되면 IP 를 다시 알려 드릴게요.`,
+      { mention: true }
     );
   } catch (e) {
     const msg = String(e.message || e);

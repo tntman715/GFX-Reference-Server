@@ -4845,6 +4845,23 @@ html.no-grain .profile-head::after {
   font-size: 13px;
 }
 
+.sc-sync {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.sc-err {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #ff6b6b;
+}
+
+.sc-links .row {
+  flex-wrap: wrap;
+}
+
 .sc-status {
   padding: 2px 8px;
   border-radius: 999px;

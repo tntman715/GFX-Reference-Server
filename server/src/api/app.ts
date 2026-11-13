@@ -29,6 +29,7 @@ import { toJpegThumb } from '../services/image.js';
 import { DuplicateError } from '../services/references.js';
 import { REPORT_REASONS } from '../services/reports.js';
 import { isResourceKind, RESOURCE_KIND_KEYS, RESOURCE_KINDS, RESOURCE_LIMITS } from '../services/resources.js';
+import { SHOWCASE_SORTS, type ShowcaseSort, SYNC_HOURS } from '../services/showcase.js';
 import { auditRepo } from '../repos/audit.js';
 import { isSafeKey } from '../storage/types.js';
 import { TIERS } from '../tiers.js';
@@ -742,7 +743,16 @@ export function createApi(ctx: AppContext): Hono<Env> {
     const pageSize = intParam(q.limit, 24, 1, 60);
     const page = intParam(q.page, 1, 1, 10_000);
     const offset = (page - 1) * pageSize;
-    const { items, total } = await ctx.showcase.list({ q: q.q?.slice(0, 200), addedBy: q.addedBy, limit: pageSize, offset });
+    const sort = SHOWCASE_SORTS.includes(q.sort as ShowcaseSort) ? (q.sort as ShowcaseSort) : 'new';
+    const seed = Number.parseInt(q.seed ?? '', 10);
+    const { items, total } = await ctx.showcase.list({
+      q: q.q?.slice(0, 200),
+      addedBy: q.addedBy,
+      limit: pageSize,
+      offset,
+      sort,
+      seed: Number.isFinite(seed) ? seed : 0,
+    });
     return c.json({ items: items.map((s) => ctx.showcase.toPublic(s)), total, page, pageSize, hasMore: offset + items.length < total });
   });
 
@@ -779,10 +789,27 @@ export function createApi(ctx: AppContext): Hono<Env> {
 
   app.post('/api/admin/showcase-requests/:id', async (c) => {
     const user = await requireAdmin(c);
-    const body = await c.req.json<{ action?: string }>().catch(() => ({}) as { action?: string });
+    const body = await c.req.json<{ action?: string; syncHours?: number | null }>().catch(() => ({}) as { action?: string; syncHours?: number | null });
     if (body.action !== 'approve' && body.action !== 'reject') throw new UserError('승인 또는 거절을 골라 주세요.');
-    const req = await ctx.showcase.decide(showcaseId(c), body.action === 'approve', { id: user.id, isAdmin: true });
+    const req = await ctx.showcase.decide(showcaseId(c), body.action === 'approve', { id: user.id, isAdmin: true }, { syncHours: body.syncHours ?? null });
     return c.json({ request: req });
+  });
+
+  // 가져오기가 끝난 재생목록 (자동 연동 켜고 끄기)
+  app.get('/api/admin/showcase-links', async (c) => {
+    await requireAdmin(c);
+    return c.json({ items: await ctx.showcase.requests({ status: 'done' }), hours: SYNC_HOURS, enabled: ctx.showcase.playlistEnabled });
+  });
+
+  app.post('/api/admin/showcase-requests/:id/sync', async (c) => {
+    const user = await requireAdmin(c);
+    const body = await c.req.json<{ hours?: number | null }>().catch(() => ({}) as { hours?: number | null });
+    return c.json({ request: await ctx.showcase.setSync(showcaseId(c), body.hours ?? null, { id: user.id, isAdmin: true }) });
+  });
+
+  app.post('/api/admin/showcase-requests/:id/sync-now', async (c) => {
+    const user = await requireAdmin(c);
+    return c.json(await ctx.showcase.syncNow(showcaseId(c), { id: user.id, isAdmin: true }));
   });
 
   // ── 방문 통계 (하루 합계 숫자만 · IP / 쿠키 / 계정은 남기지 않음) ──

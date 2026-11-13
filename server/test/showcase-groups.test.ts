@@ -86,9 +86,9 @@ describe('마이그레이션 8: 비지메 태그 옮기기', () => {
 
   it('비지메 레퍼런스의 태그를 비지메 태그군으로 옮긴다', async () => {
     const db = await openDb({ pgliteDir: 'memory' });
-    // 8번만 빼고 먼저 적용
+    // 8번만 빼고 먼저 적용 (12번은 8번이 만드는 쇼케이스 표를 고치므로 같이 건너뜀)
     await db.exec(`CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());
-      INSERT INTO schema_migrations (id, name) VALUES (8, 'later');`);
+      INSERT INTO schema_migrations (id, name) VALUES (8, 'later'), (12, 'later');`);
     await migrate(db);
     await db.exec(`
       INSERT INTO users (discord_id, username) VALUES ('1', 'u');

@@ -62,6 +62,9 @@ async function main() {
     log.warn('디스코드 봇 없이 실행 중입니다. 업로드는 할 수 없고, 원본은 로컬 폴더(data/originals)에서 제공합니다.');
   }
 
+  // 자동 연동한 쇼케이스 재생목록에 새 영상이 있는지 10분마다 봄 (유튜브 API 키가 있을 때만)
+  ctx.showcase.startSync();
+
   let stopping = false;
   const shutdown = async (signal: string) => {
     if (stopping) return;
@@ -69,6 +72,7 @@ async function main() {
     log.info(`${signal} 수신 — 종료합니다.`);
     server.close();
     await bot?.stop().catch(() => undefined);
+    ctx.showcase.stopSync();
     await ctx.siteStats.stop().catch(() => undefined);
     await ctx.db.close().catch(() => undefined);
     process.exit(0);

@@ -47,7 +47,7 @@ async function freshDb(): Promise<Db> {
     await migrate(sharedDb);
   }
   await sharedDb.exec(`
-    TRUNCATE audit_log, site_stats_daily, showcases, showcase_requests, ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
+    TRUNCATE audit_log, site_stats_daily, showcase_removed, showcases, showcase_requests, ref_videos, reports, resource_tag_links, resource_tags, resources, board_items, boards, edit_proposals, import_items, refs, ref_tags, reactions, users, score_adjustments, api_tokens, device_codes, kv, tags RESTART IDENTITY CASCADE;
     ${DEFAULT_TAGS.map((t) => `INSERT INTO tags (grp, name, description, created_by) VALUES ('gd', '${t.name}', '${t.description}', 'system'), ('nongd', '${t.name}', '${t.description}', 'system');`).join('\n')}
   `);
   return sharedDb;

@@ -1,6 +1,6 @@
 import { api, ApiError } from '../api.js';
 import { emptyState, handleApiError, requireLogin, ResultsGrid } from '../components.js';
-import { avatarSrc, clear, debounce, fmtDate, h, spinner, toast } from '../dom.js';
+import { avatarSrc, clear, debounce, fmtDate, fmtRelative, h, spinner, toast } from '../dom.js';
 import { t } from '../i18n.js';
 import { store } from '../store.js';
 import { refreshMe } from './edits.js';
@@ -16,6 +16,32 @@ const PLAY_ICON =
   '<svg width="44" height="44" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.6)"/><path d="M10 8.5v7l5.5-3.5z" fill="#fff"/></svg>';
 
 const points = () => store.meta?.showcase?.points ?? 3;
+
+// 정렬: 랜덤이 기본. 고른 정렬은 이 브라우저에 기억
+const SORTS = ['random', 'new', 'published', 'old'];
+const SORT_KEY = 'gfx.scSort';
+function savedSort() {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return SORTS.includes(v) ? v : 'random';
+  } catch {
+    return 'random';
+  }
+}
+const newSeed = () => Math.floor(Math.random() * 1_000_000_000);
+
+// 재생목록 자동 연동 주기 (시간). 서버의 SYNC_HOURS 와 같아야 함
+const SYNC_HOURS = [1, 3, 6, 12, 24];
+function syncSelect(value, attrs = {}) {
+  const sel = h(
+    'select.select',
+    { 'aria-label': '자동 연동 주기', ...attrs },
+    h('option', { value: '' }, '자동 연동 안 함'),
+    SYNC_HOURS.map((n) => h('option', { value: String(n) }, `🔄 ${n}시간마다 새 영상 확인`)),
+  );
+  sel.value = value ? String(value) : '';
+  return sel;
+}
 
 function showcaseCard(s) {
   return h(
@@ -42,8 +68,9 @@ function requestRow(r, actions) {
       h(
         'span.faint',
         ` · ${r.channelName ?? ''} · ${t('sc.videos', { n: r.itemCount ?? '?' })}`,
-        r.status === 'done' || r.status === 'failed' ? ` · ${t('sc.importedN', { n: r.imported })}` : '',
+        r.status === 'done' || r.status === 'failed' ? ` · ${t('sc.importedN', { n: r.imported + (r.syncAdded ?? 0) })}` : '',
       ),
+      r.syncHours ? h('span.sc-sync', t('sc.syncEvery', { n: r.syncHours })) : null,
     ),
     h('span.sc-req-who', h('img', { src: avatarSrc(r.requestedBy.avatarUrl), alt: '' }), r.requestedBy.name ?? '?'),
     h(`span.sc-status.${STATUS_CLASS[r.status] ?? ''}`, t(`sc.status.${r.status}`)),
@@ -102,7 +129,42 @@ export function mountShowcase(root, params) {
     }, 280),
   );
 
+  // 정렬 (랜덤이면 들어올 때마다 새로 섞이고, 「다시 섞기」로 또 섞을 수 있음)
+  let sort = savedSort();
+  let seed = newSeed();
+  const shuffleBtn = h(
+    'button.btn.sm',
+    {
+      type: 'button',
+      title: t('sc.shuffle'),
+      onclick: () => {
+        seed = newSeed();
+        reload();
+      },
+    },
+    `🔀 ${t('sc.shuffle')}`,
+  );
+  const sortSelect = h(
+    'select.select',
+    {
+      'aria-label': t('sc.sortLabel'),
+      onchange: () => {
+        sort = sortSelect.value;
+        try {
+          localStorage.setItem(SORT_KEY, sort);
+        } catch {
+          /* 기억 못 해도 됨 */
+        }
+        if (sort === 'random') seed = newSeed();
+        reload();
+      },
+    },
+    SORTS.map((s) => h('option', { value: s }, t(`sc.sort.${s}`))),
+  );
+  sortSelect.value = sort;
+
   const keyEl = h('div');
+  const linksEl = h('div');
   const requestsEl = h('div');
   const results = h('div');
   root.append(
@@ -110,18 +172,20 @@ export function mountShowcase(root, params) {
     h('div.sc-top', addForm, hint),
     keyEl,
     requestsEl,
-    h('div.res-toolbar', search),
+    linksEl,
+    h('div.res-toolbar', search, sortSelect, shuffleBtn),
     results,
   );
 
   function reload() {
     grid?.destroy();
     clear(results);
+    shuffleBtn.hidden = sort !== 'random';
     grid = new ResultsGrid({
       layout: 'grid',
       gridClass: 'sc-grid',
       card: showcaseCard,
-      load: (page) => api.get('/api/showcase', { q, page, limit: 24 }),
+      load: (page) => api.get('/api/showcase', { q, page, limit: 24, sort, seed }),
       empty: () => emptyState(q ? t('sc.noMatch') : t('sc.empty')),
     });
     results.append(grid.el);
@@ -140,19 +204,24 @@ export function mountShowcase(root, params) {
             'section.sc-requests',
             { id: 'requests' },
             h('h2', '승인 대기 재생목록'),
-            h('p.hint', `승인하면 재생목록의 영상이 요청한 사람 이름으로 한꺼번에 들어오고, 영상마다 +${points()}점이 들어가요.`),
-            items.map((r) =>
-              requestRow(
-                r,
-                r.status === 'pending'
-                  ? h(
-                      'div.row',
-                      h('button.btn.sm.primary', { onclick: () => decide(r, 'approve') }, '승인하고 가져오기'),
-                      h('button.btn.sm.danger', { onclick: () => decide(r, 'reject') }, '거절'),
-                    )
-                  : null,
-              ),
+            h(
+              'p.hint',
+              `승인하면 재생목록의 영상이 요청한 사람 이름으로 한꺼번에 들어오고, 영상마다 +${points()}점이 들어가요. ` +
+                '자동 연동을 고르면 그 뒤에 재생목록에 새로 올라오는 영상도 정해진 주기마다 알아서 들어와요.',
             ),
+            items.map((r) => {
+              if (r.status !== 'pending') return requestRow(r);
+              const sync = syncSelect(null);
+              return requestRow(
+                r,
+                h(
+                  'div.row',
+                  sync,
+                  h('button.btn.sm.primary', { onclick: () => decide(r, 'approve', sync.value ? Number(sync.value) : null) }, '승인하고 가져오기'),
+                  h('button.btn.sm.danger', { onclick: () => decide(r, 'reject') }, '거절'),
+                ),
+              );
+            }),
           ),
         );
         if (params.get('tab') === 'requests') requestsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -253,14 +322,100 @@ export function mountShowcase(root, params) {
     );
   }
 
-  async function decide(r, action) {
+  // 관리자: 가져온 재생목록의 자동 연동 (주기 바꾸기 · 지금 확인)
+  async function loadLinks() {
+    clear(linksEl);
+    if (!store.me?.isAdmin) return;
+    let data;
+    try {
+      data = await api.get('/api/admin/showcase-links');
+    } catch {
+      return;
+    }
+    if (!data.items.length) return;
+    const on = data.items.filter((r) => r.syncHours).length;
+    linksEl.append(
+      h(
+        'details.sc-requests.sc-key.sc-links',
+        h('summary', h('strong', `🔄 재생목록 자동 연동 · ${on ? `${on}개 켜짐` : '꺼짐'}`)),
+        h(
+          'p.hint',
+          '가져온 재생목록에 새 영상이 올라오면 정해진 주기마다 알아서 쇼케이스에 넣어요 (요청한 사람 이름 · 점수로). ' +
+            '쇼케이스에서 지운 영상은 다시 넣지 않아요.',
+        ),
+        data.enabled ? null : h('p.hint.sc-err', '유튜브 API 키가 없어서 지금은 확인하지 않아요.'),
+        data.items.map((r) => linkRow(r)),
+      ),
+    );
+  }
+
+  function linkRow(r) {
+    const sel = syncSelect(r.syncHours, {
+      onchange: async () => {
+        sel.disabled = true;
+        try {
+          await api.post(`/api/admin/showcase-requests/${r.id}/sync`, { hours: sel.value ? Number(sel.value) : null });
+          toast(sel.value ? `${sel.value}시간마다 새 영상을 확인할게요.` : '자동 연동을 껐어요.', 'ok');
+          loadLinks();
+        } catch (err) {
+          handleApiError(err);
+          sel.disabled = false;
+        }
+      },
+    });
+    const nowBtn = h(
+      'button.btn.sm',
+      {
+        type: 'button',
+        onclick: async () => {
+          nowBtn.disabled = true;
+          try {
+            const res = await api.post(`/api/admin/showcase-requests/${r.id}/sync-now`);
+            toast(res.added ? `새 영상 ${res.added}개를 넣었어요.` : '새 영상이 없어요.', 'ok');
+            loadLinks();
+            if (res.added) reload();
+          } catch (err) {
+            handleApiError(err);
+            nowBtn.disabled = false;
+          }
+        },
+      },
+      '지금 확인',
+    );
+    return h(
+      'div.sc-req',
+      h(
+        'div.sc-req-main',
+        h('a', { href: `https://www.youtube.com/playlist?list=${encodeURIComponent(r.playlistId)}`, target: '_blank', rel: 'noopener noreferrer' }, r.title ?? r.playlistId),
+        h(
+          'span.faint',
+          ` · ${r.requestedBy.name ?? '?'} · 처음 ${r.imported}개` + (r.syncAdded ? ` + 연동 ${r.syncAdded}개` : '') +
+            (r.syncedAt ? ` · 마지막 확인 ${fmtRelative(r.syncedAt)}` : ''),
+        ),
+        r.syncError ? h('div.sc-err', `확인 실패: ${r.syncError}`) : null,
+      ),
+      h('div.row', sel, nowBtn),
+    );
+  }
+
+  async function decide(r, action, syncHours = null) {
     if (action === 'reject' && !window.confirm(`"${r.title ?? r.playlistId}" 요청을 거절할까요?`)) return;
     try {
-      await api.post(`/api/admin/showcase-requests/${r.id}`, { action });
-      toast(action === 'approve' ? '승인했어요. 뒤에서 가져오는 중이에요.' : '거절했어요.', 'ok');
+      await api.post(`/api/admin/showcase-requests/${r.id}`, action === 'approve' ? { action, syncHours } : { action });
+      toast(
+        action === 'approve'
+          ? `승인했어요. 뒤에서 가져오는 중이에요.${syncHours ? ` 그 뒤로 ${syncHours}시간마다 새 영상을 확인해요.` : ''}`
+          : '거절했어요.',
+        'ok',
+      );
       refreshMe();
       loadRequests();
-      if (action === 'approve') setTimeout(() => reload(), 3000);
+      if (action === 'approve') {
+        setTimeout(() => {
+          reload();
+          loadLinks();
+        }, 3000);
+      }
     } catch (err) {
       handleApiError(err);
     }
@@ -269,12 +424,14 @@ export function mountShowcase(root, params) {
   reload();
   loadRequests();
   loadKey();
+  loadLinks();
   let seen = me?.id ?? null;
   const off = store.on(() => {
     if ((store.me?.id ?? null) === seen) return;
     seen = store.me?.id ?? null;
     loadRequests();
     loadKey();
+    loadLinks();
   });
   return {
     update(next) {

@@ -280,7 +280,7 @@ const ACTION_GROUPS = [
   ['edit', '수정 제안 처리'],
   ['score', '점수 조정'],
   ['report', '신고 처리'],
-  ['showcase-request', '재생목록 승인'],
+  ['showcase-request', '재생목록 승인 · 연동'],
   ['showcase', '쇼케이스 삭제'],
   ['video', '제작과정 영상 삭제'],
   ['resource', '자료 삭제'],

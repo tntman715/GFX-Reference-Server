@@ -403,6 +403,23 @@ ALTER TABLE refs ADD COLUMN compressed_from BIGINT;
 ALTER TABLE refs ADD COLUMN source_url TEXT;
 `,
   },
+  {
+    id: 12,
+    name: 'showcase_playlist_sync',
+    sql: `
+-- 쇼케이스 재생목록 자동 연동: 몇 시간마다 새 영상을 확인할지 (NULL = 연동 안 함)
+ALTER TABLE showcase_requests ADD COLUMN sync_hours INTEGER;
+ALTER TABLE showcase_requests ADD COLUMN synced_at TIMESTAMPTZ;
+ALTER TABLE showcase_requests ADD COLUMN sync_added INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE showcase_requests ADD COLUMN sync_error TEXT;
+
+-- 쇼케이스에서 지운 영상: 재생목록 연동이 다시 넣지 않도록 기억
+CREATE TABLE showcase_removed (
+  youtube_id  TEXT PRIMARY KEY,
+  removed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`,
+  },
 ];
 
 function sqlString(s: string): string {

@@ -1,5 +1,5 @@
 import { api, ApiError } from '../api.js';
-import { emptyState, handleApiError, openOverlay, requireLogin, ResultsGrid } from '../components.js';
+import { emptyState, handleApiError, onPasteImages, openOverlay, requireLogin, ResultsGrid } from '../components.js';
 import { avatarSrc, clear, debounce, fmtBytes, fmtDate, h, spinner, toast } from '../dom.js';
 import { getLang, t } from '../i18n.js';
 import { store } from '../store.js';
@@ -317,6 +317,7 @@ export function openResourceUpload(kind, { navigate } = {}) {
   const maxBytes = store.meta?.upload?.resourceMaxBytes ?? 10 * 1024 * 1024;
   const mb = Math.round(maxBytes / 1024 / 1024);
   const tags = new Set();
+  let stopPaste = null;
 
   openOverlay(
     (close) => {
@@ -365,11 +366,16 @@ export function openResourceUpload(kind, { navigate } = {}) {
         renderFile();
       };
       fileInput.addEventListener('change', () => setFile(fileInput.files?.[0]));
-      imgInput.addEventListener('change', () => {
-        for (const f of imgInput.files ?? []) if (images.length < 6 && f.type.startsWith('image/')) images.push(f);
-        imgInput.value = '';
+      const addImages = (files) => {
+        for (const f of files) if (images.length < 6 && f.type.startsWith('image/')) images.push(f);
         renderImages();
+      };
+      imgInput.addEventListener('change', () => {
+        addImages([...(imgInput.files ?? [])]);
+        imgInput.value = '';
       });
+      // Ctrl+V 로 붙여 넣은 이미지는 미리보기 사진으로 추가
+      stopPaste = onPasteImages(imgList, addImages);
       drop.addEventListener('dragover', (e) => {
         e.preventDefault();
         drop.classList.add('over');
@@ -462,7 +468,7 @@ export function openResourceUpload(kind, { navigate } = {}) {
         h('div.row.form-actions', h('button.btn', { type: 'button', onclick: close }, t('edit.cancel')), submit),
       );
     },
-    { className: 'panel' },
+    { className: 'panel', onClose: () => stopPaste?.() },
   );
 }
 

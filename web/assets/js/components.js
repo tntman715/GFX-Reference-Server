@@ -241,6 +241,32 @@ export function openOverlay(content, { onClose, small = false, className = '' } 
   return { close, sheet };
 }
 
+/**
+ * 창이 열려 있는 동안 Ctrl+V 로 붙여 넣은 이미지를 받음.
+ * anchor 가 들어 있는 창이 맨 위에 있을 때만 동작하고, 돌려준 함수를 부르면 그만 받음.
+ * 클립보드의 이름 없는 이미지(브라우저의 "이미지 복사", 캡처 도구)는 pasted-날짜.확장자 로 이름을 붙여 줌.
+ */
+export function onPasteImages(anchor, handler) {
+  const onPaste = (e) => {
+    const open = document.querySelectorAll('#overlay-root .overlay:not(.closing)');
+    if (!anchor.isConnected || !open[open.length - 1]?.contains(anchor)) return;
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return; // 글자만 붙여 넣을 때는 그대로 둠
+    e.preventDefault();
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+    handler(
+      files.map((f, i) => {
+        if (f.name && !/^image\.\w+$/i.test(f.name)) return f;
+        const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*$/, '');
+        const name = `pasted-${stamp}${files.length > 1 ? `-${i + 1}` : ''}.${ext}`;
+        return Object.assign(new File([f], name, { type: f.type }), { pasted: true });
+      }),
+    );
+  };
+  document.addEventListener('paste', onPaste);
+  return () => document.removeEventListener('paste', onPaste);
+}
+
 // ── 로그인 ─────────────────────────────────────────────
 
 export function requireLogin(reason) {

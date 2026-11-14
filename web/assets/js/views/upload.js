@@ -1,5 +1,5 @@
 import { api, ApiError } from '../api.js';
-import { handleApiError, openOverlay, requireLogin } from '../components.js';
+import { handleApiError, onPasteImages, openOverlay, requireLogin } from '../components.js';
 import { clear, fmtBytes, h, toast } from '../dom.js';
 import { categoryLabel, t } from '../i18n.js';
 import { store } from '../store.js';
@@ -28,29 +28,30 @@ export function openUploadForm({ navigate } = {}) {
   let previewUrl = null;
   let category = categories[0]?.key ?? 'gm_thumbnail';
   const tags = new Set();
+  let stopPaste = null;
 
   openOverlay(
     (close) => {
-      // ── 파일 고르기 (누르거나 끌어다 놓기) ──
+      // ── 파일 고르기 (누르거나, 끌어다 놓거나, Ctrl+V 로 붙여 넣기) ──
       const fileInput = h('input', { type: 'file', accept: ACCEPT, hidden: true });
       const dropInner = h('div.drop-inner');
       const drop = h('button.drop-zone', { type: 'button', onclick: () => fileInput.click() }, dropInner);
       const renderDrop = () => {
         clear(dropInner);
-        if (file) {
-          dropInner.append(
-            h('img', { src: previewUrl, alt: '' }),
-            h('span.drop-name', `${file.name} · ${fmtBytes(file.size)}`),
-            file.size > keepBytes ? h('span.hint.drop-shrink', t('upload.willShrink', { mb: mbOf(keepBytes) })) : null,
-            h('span.hint', t('upload.change')),
-          );
-        } else {
-          dropInner.append(
-            h('b', t('upload.pick')),
-            h('span.hint', t('upload.limit', { mb: mbOf(maxBytes) })),
-            maxBytes > keepBytes ? h('span.hint', t('upload.shrinkNote', { mb: mbOf(keepBytes) })) : null,
-          );
-        }
+        // 네이티브 append 는 null 을 "null" 글자로 넣어서, 빈 값은 빼고 넣음
+        const parts = file
+          ? [
+              h('img', { src: previewUrl, alt: '' }),
+              h('span.drop-name', `${file.name} · ${fmtBytes(file.size)}`),
+              file.size > keepBytes ? h('span.hint.drop-shrink', t('upload.willShrink', { mb: mbOf(keepBytes) })) : null,
+              h('span.hint', t('upload.change')),
+            ]
+          : [
+              h('b', t('upload.pick')),
+              h('span.hint', t('upload.limit', { mb: mbOf(maxBytes) })),
+              maxBytes > keepBytes ? h('span.hint', t('upload.shrinkNote', { mb: mbOf(keepBytes) })) : null,
+            ];
+        dropInner.append(...parts.filter(Boolean));
       };
       const setFile = (f) => {
         if (!f) return;
@@ -59,8 +60,8 @@ export function openUploadForm({ navigate } = {}) {
         file = f;
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         previewUrl = URL.createObjectURL(f);
-        // 제목/맵 이름이 비어 있으면 파일 이름으로 채워 둠
-        if (!mapName.value && !title.value) {
+        // 제목/맵 이름이 비어 있으면 파일 이름으로 채워 둠 (붙여 넣은 이미지는 이름이 없어서 건너뜀)
+        if (!f.pasted && !mapName.value && !title.value) {
           const base = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
           if (mapField.hidden) title.value = base;
           else mapName.value = base;
@@ -79,6 +80,7 @@ export function openUploadForm({ navigate } = {}) {
         drop.classList.remove('over');
         setFile(e.dataTransfer?.files?.[0]);
       });
+      stopPaste = onPasteImages(drop, (files) => setFile(files[0]));
 
       // ── 입력칸 ──
       const mapName = h('input.form-input', { type: 'text', maxlength: 100 });
@@ -209,7 +211,10 @@ export function openUploadForm({ navigate } = {}) {
     },
     {
       className: 'panel',
-      onClose: () => previewUrl && URL.revokeObjectURL(previewUrl),
+      onClose: () => {
+        stopPaste?.();
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      },
     },
   );
 }
